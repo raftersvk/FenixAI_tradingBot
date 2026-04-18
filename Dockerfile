@@ -17,6 +17,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi-dev \
     libssl-dev \
     curl \
+    wget \
+    && wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz \
+    && tar -xzf ta-lib-0.4.0-src.tar.gz \
+    && cd ta-lib/ \
+    && ./configure --prefix=/usr \
+    && make \
+    && make install \
+    && cd .. \
+    && rm -rf ta-lib-0.4.0-src.tar.gz ta-lib/ \
     && rm -rf /var/lib/apt/lists/*
 
 # Create virtual environment
@@ -31,7 +40,8 @@ COPY src/ ./src/
 
 # Install Python dependencies
 RUN pip install --upgrade pip wheel setuptools && \
-    pip install --no-cache-dir ".[vision,monitoring]"
+    pip install --no-cache-dir ".[vision,monitoring]" && \
+    pip install --no-cache-dir langgraph langchain_ollama TA-Lib
 
 # Install additional runtime dependencies (some missing from pyproject.toml)
 RUN pip install --no-cache-dir \
