@@ -225,7 +225,7 @@ class ReasoningBankOptimized:
                     )
                 """, (agent_name, agent_name, self.max_entries_per_agent))
         
-        logger.info(f"ReasoningBank: Stored entry for {agent_name} with digest {digest[:8]}")
+        logger.debug(f"ReasoningBank: Stored entry for {agent_name} with digest {digest[:8]}")
         
         return ReasoningEntryOptimized(
             agent=agent_name,
@@ -314,7 +314,7 @@ class ReasoningBankOptimized:
                 ))
                 
                 if cursor.rowcount > 0:
-                    logger.info(f"ReasoningBank: Updated outcome for {prompt_digest[:8]}")
+                    logger.debug(f"ReasoningBank: Updated outcome for {prompt_digest[:8]}")
                     return True
                 else:
                     logger.warning(f"ReasoningBank: Entry not found: {prompt_digest[:8]}")
@@ -349,7 +349,7 @@ class ReasoningBankOptimized:
                 ))
                 
                 if cursor.rowcount > 0:
-                    logger.info(f"ReasoningBank: Judge feedback attached to {prompt_digest[:8]}")
+                    logger.debug(f"ReasoningBank: Judge feedback attached to {prompt_digest[:8]}")
                     return True
                 return False
     

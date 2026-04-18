@@ -8,6 +8,7 @@ This is the refactored core that orchestrates:
 - Decision management and order execution
 - Logging and metrics
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -23,7 +24,16 @@ from typing import Any
 from src.trading.market_data import MarketDataManager, get_market_data_manager
 from src.trading.binance_client import BinanceClient
 from src.trading.executor import OrderExecutor, OrderResult
-from src.tools.technical_tools import add_kline, get_current_indicators, close_buf, high_buf, low_buf, vol_buf, open_buf, timestamp_buf
+from src.tools.technical_tools import (
+    add_kline,
+    get_current_indicators,
+    close_buf,
+    high_buf,
+    low_buf,
+    vol_buf,
+    open_buf,
+    timestamp_buf,
+)
 from src.tools.chart_generator import FenixChartGenerator
 from src.tools.professional_chart_generator import ProfessionalChartGenerator
 from src.tools.enhanced_news_scraper import EnhancedNewsScraper
@@ -53,6 +63,7 @@ except ImportError:
 
 try:
     from src.risk.runtime_risk_manager import RuntimeRiskManager, get_risk_manager
+
     RISK_MANAGER_AVAILABLE = True
 except ImportError:
     RISK_MANAGER_AVAILABLE = False
@@ -64,6 +75,7 @@ logger = logging.getLogger("FenixTradingEngine")
 @dataclass
 class TradingConfig:
     """Trading engine configuration."""
+
     symbol: str = "BTCUSDT"
     interval: str = "15m"
     analysis_interval: int = 60
@@ -124,7 +136,9 @@ class TradingEngine:
 
         # Signal log path for persistence
         project_root = Path(__file__).parent.parent.parent
-        self.signal_log_path = project_root / "logs" / "signals" / f"{symbol}_{timeframe}_signals.jsonl"
+        self.signal_log_path = (
+            project_root / "logs" / "signals" / f"{symbol}_{timeframe}_signals.jsonl"
+        )
         self.signal_log_path.parent.mkdir(parents=True, exist_ok=True)
 
         # State
@@ -245,9 +259,7 @@ class TradingEngine:
 
             # Verify minimum candles
             if self._kline_count < self._min_klines_to_start:
-                logger.info(
-                    f"Warming up: {self._kline_count}/{self._min_klines_to_start} klines"
-                )
+                logger.info(f"Warming up: {self._kline_count}/{self._min_klines_to_start} klines")
                 return
 
             # Execute analysis
@@ -282,29 +294,40 @@ class TradingEngine:
                     logger.warning("Failed to fetch news: %s", e)
                 # Send news update event to frontend
                 if (callback := self.on_agent_event) is not None:
-                    await callback("news_update", {
-                        "news_data": news_data,
-                        "timestamp": datetime.now(timezone.utc).isoformat()
-                    })
-            
+                    await callback(
+                        "news_update",
+                        {
+                            "news_data": news_data,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        },
+                    )
+
             # 4. Get social data (Twitter/Reddit) and Fear & Greed
             social_data = {}
             fear_greed_value = None
             if self.enable_sentiment:
                 try:
-                    twitter_data = self.twitter_scraper._run() if hasattr(self.twitter_scraper, '_run') else {}
+                    twitter_data = (
+                        self.twitter_scraper._run() if hasattr(self.twitter_scraper, "_run") else {}
+                    )
                 except Exception as e:
                     logger.warning(f"Twitter scraper failed: {e}")
                     twitter_data = {}
 
                 try:
-                    reddit_data = self.reddit_scraper._run() if hasattr(self.reddit_scraper, '_run') else {}
+                    reddit_data = (
+                        self.reddit_scraper._run() if hasattr(self.reddit_scraper, "_run") else {}
+                    )
                 except Exception as e:
                     logger.warning(f"Reddit scraper failed: {e}")
                     reddit_data = {}
 
                 try:
-                    fg = self.fear_greed_tool._run(1) if hasattr(self.fear_greed_tool, '_run') else None
+                    fg = (
+                        self.fear_greed_tool._run(1)
+                        if hasattr(self.fear_greed_tool, "_run")
+                        else None
+                    )
                     fear_greed_value = fg if fg is not None else "N/A"
                 except Exception as e:
                     logger.warning(f"FearGreed tool failed: {e}")
@@ -317,7 +340,9 @@ class TradingEngine:
 
             # 5. Execute agent graph
             if self._trading_graph:
-                result = await self._execute_langgraph_analysis(indicators, micro, news_data, social_data, fear_greed_value)
+                result = await self._execute_langgraph_analysis(
+                    indicators, micro, news_data, social_data, fear_greed_value
+                )
             else:
                 result = await self._execute_fallback_analysis(indicators, micro)
 
@@ -367,7 +392,9 @@ class TradingEngine:
                         try:
                             client = BinanceClient(testnet=self.use_testnet)
                             if await client.connect():
-                                klines = await client.get_klines(self.symbol, self.timeframe, limit=200)
+                                klines = await client.get_klines(
+                                    self.symbol, self.timeframe, limit=200
+                                )
                                 await client.close()
                                 if klines:
                                     kline_data = {
@@ -378,7 +405,9 @@ class TradingEngine:
                                         "volume": [k["volume"] for k in klines],
                                         "datetime": [k["timestamp"] for k in klines],
                                     }
-                                    logger.info("Using historical klines for chart (%d)", len(klines))
+                                    logger.info(
+                                        "Using historical klines for chart (%d)", len(klines)
+                                    )
                         except Exception as hist_err:
                             logger.warning("Historical klines fetch failed: %s", hist_err)
 
@@ -390,19 +419,19 @@ class TradingEngine:
                             "high": list(high_buf),
                             "low": list(low_buf),
                             "volume": list(vol_buf),
-                            "datetime": list(timestamp_buf)  # Unix timestamps in milliseconds
+                            "datetime": list(timestamp_buf),  # Unix timestamps in milliseconds
                         }
-                    
+
                     # Try professional generator first (TradingView style)
                     try:
                         pro_result = self.pro_chart_generator.generate_chart(
                             kline_data=kline_data,
                             symbol=self.symbol,
                             timeframe=self.timeframe,
-                            show_indicators=['ema_9', 'ema_21', 'bb_bands', 'vwap'],
+                            show_indicators=["ema_9", "ema_21", "bb_bands", "vwap"],
                             show_volume=True,
                             show_rsi=True,
-                            show_macd=True
+                            show_macd=True,
                         )
                         chart_b64 = pro_result.get("image_b64")
                         if chart_b64:
@@ -410,19 +439,19 @@ class TradingEngine:
                     except Exception as pro_err:
                         logger.warning("Professional chart failed, falling back: %s", pro_err)
                         chart_b64 = None
-                    
+
                     # Fallback to original generator if professional fails
                     if not chart_b64:
                         chart_result = self.chart_generator.generate_chart(
                             kline_data=kline_data,
                             symbol=self.symbol,
                             timeframe=self.timeframe,
-                            last_n_candles=50
+                            last_n_candles=50,
                         )
                         chart_b64 = chart_result.get("image_b64")
                         if chart_b64:
                             logger.info("🖼️ Fallback chart generated (%d chars)", len(chart_b64))
-                    
+
                     if not chart_b64:
                         logger.warning("🖼️ Chart generation returned no image")
                         # Create a placeholder chart image to keep visual agent behavior consistent
@@ -430,9 +459,9 @@ class TradingEngine:
                             placeholder = self.chart_generator.generate_placeholder(
                                 message="Insufficient market data for chart",
                                 symbol=self.symbol,
-                                timeframe=self.timeframe
+                                timeframe=self.timeframe,
                             )
-                            chart_b64 = placeholder.get('image_b64')
+                            chart_b64 = placeholder.get("image_b64")
                             logger.info("🖼️ Placeholder chart generated for visual agent")
                         except Exception:
                             chart_b64 = None
@@ -440,26 +469,26 @@ class TradingEngine:
                     logger.error("Failed to generate chart: %s", e)
 
                 result = await self._trading_graph.invoke(
-                symbol=self.symbol,
-                timeframe=self.timeframe,
-                indicators=indicators,
-                current_price=self.market_data.current_price,
-                current_volume=self.market_data.current_volume,
-                obi=micro.obi,
-                cvd=micro.cvd,
-                spread=micro.spread,
-                orderbook_depth={
-                    "bid_depth": micro.bid_depth,
-                    "ask_depth": micro.ask_depth,
-                },
-                mtf_context={}, # Add empty context if needed
-                chart_image_b64=chart_b64,
+                    symbol=self.symbol,
+                    timeframe=self.timeframe,
+                    indicators=indicators,
+                    current_price=self.market_data.current_price,
+                    current_volume=self.market_data.current_volume,
+                    obi=micro.obi,
+                    cvd=micro.cvd,
+                    spread=micro.spread,
+                    orderbook_depth={
+                        "bid_depth": micro.bid_depth,
+                        "ask_depth": micro.ask_depth,
+                    },
+                    mtf_context={},  # Add empty context if needed
+                    chart_image_b64=chart_b64,
                     news_data=news_data or [],
                     social_data=social_data or {},
                     fear_greed_value=fear_greed_value or "N/A",
-                # thread_id argument removed as persistence is disabled
-                # thread_id=f"{self.symbol}_{self.timeframe}",
-            )
+                    # thread_id argument removed as persistence is disabled
+                    # thread_id=f"{self.symbol}_{self.timeframe}",
+                )
 
             # Emit agent outputs to frontend
             if (callback := self.on_agent_event) is not None:
@@ -470,13 +499,13 @@ class TradingEngine:
                     ("Sentiment Agent", "sentiment_report"),
                     ("Visual Agent", "visual_report"),
                     ("Risk Manager", "risk_report"),
-                    ("Decision Agent", "final_trade_decision") # Decision is special
+                    ("Decision Agent", "final_trade_decision"),  # Decision is special
                 ]:
                     if result.get(report_key):
                         payload = {
                             "agent_name": agent_name,
                             "data": result[report_key],
-                            "timestamp": datetime.now(timezone.utc).isoformat()
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
                         }
                         # Attach social_data and fear_greed_value for sentiment agent for richer frontend updates
                         if agent_name == "Sentiment Agent":
@@ -485,11 +514,14 @@ class TradingEngine:
                         await callback("agent_output", payload)
                         # If the report stored a ReasoningBank digest, emit a reasoning:new event
                         if result[report_key].get("_reasoning_digest"):
-                            await callback("reasoning:new", {
-                                "agent_name": agent_name,
-                                "prompt_digest": result[report_key].get("_reasoning_digest"),
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
-                            })
+                            await callback(
+                                "reasoning:new",
+                                {
+                                    "agent_name": agent_name,
+                                    "prompt_digest": result[report_key].get("_reasoning_digest"),
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                },
+                            )
 
             # Log individual agent results
             if result.get("technical_report"):
@@ -497,7 +529,9 @@ class TradingEngine:
             if result.get("qabba_report"):
                 logger.info(f"📊 QABBA: {result['qabba_report'].get('signal', 'N/A')}")
             if result.get("sentiment_report"):
-                logger.info(f"💭 Sentiment: {result['sentiment_report'].get('overall_sentiment', 'N/A')}")
+                logger.info(
+                    f"💭 Sentiment: {result['sentiment_report'].get('overall_sentiment', 'N/A')}"
+                )
             if result.get("visual_report"):
                 logger.info(f"👁️ Visual: {result['visual_report'].get('action', 'N/A')}")
 
@@ -550,13 +584,16 @@ class TradingEngine:
 
         # Emit final decision to frontend
         if (callback := self.on_agent_event) is not None:
-            await callback("final_decision", {
-                "decision": decision,
-                "confidence": confidence,
-                "reasoning": reasoning,
-                "full_data": decision_data,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            })
+            await callback(
+                "final_decision",
+                {
+                    "decision": decision,
+                    "confidence": confidence,
+                    "reasoning": reasoning,
+                    "full_data": decision_data,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
+            )
 
         # Structured log
         self._log_signal(decision, confidence, reasoning, result)
@@ -588,24 +625,29 @@ class TradingEngine:
                     self.risk_manager.update_balance(self.executor.get_balance())
             except Exception as e:
                 logger.warning("Could not update risk manager balance: %s", e)
-            
+
             # Check if trade is allowed
             base_size = decision_data.get("position_size", 1000)  # Default $1000
             allowed, risk_status = self.risk_manager.check_trade_allowed(self.symbol, base_size)
-            
+
             if not allowed:
                 logger.critical("🚨 TRADE BLOCKED BY CIRCUIT BREAKER: %s", risk_status.describe())
                 if (callback := self.on_agent_event) is not None:
-                    await callback("risk:blocked", {
-                        "status": risk_status.dict(),
-                        "timestamp": datetime.now(timezone.utc).isoformat()
-                    })
+                    await callback(
+                        "risk:blocked",
+                        {
+                            "status": risk_status.dict(),
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        },
+                    )
                 return
-            
+
             # Apply risk_bias to size
             adjusted_size = self.risk_manager.get_adjusted_size(base_size)
             if adjusted_size != base_size:
-                logger.info("Size adjusted by risk manager: $%.2f → $%.2f", base_size, adjusted_size)
+                logger.info(
+                    "Size adjusted by risk manager: $%.2f → $%.2f", base_size, adjusted_size
+                )
         # --- END CIRCUIT BREAKER ---
 
         if self.paper_trading:
@@ -632,19 +674,29 @@ class TradingEngine:
         logger.info(f"Account balance (USDT): {balance:.2f}")
 
         # Calculate quantity based on risk
-        position_size = adjusted_size if 'adjusted_size' in locals() else (balance * (APP_CONFIG.risk_management.base_risk_per_trade if APP_CONFIG else 0.01))
-        
+        position_size = (
+            adjusted_size
+            if "adjusted_size" in locals()
+            else (
+                balance * (APP_CONFIG.risk_management.base_risk_per_trade if APP_CONFIG else 0.01)
+            )
+        )
+
         quantity = position_size / entry_price
-        
+
         # Verify min notional
         notional = quantity * entry_price
         if notional < self.executor.min_notional:
-            logger.warning(f"Trade skipped: Notional {notional:.2f} < Min {self.executor.min_notional}")
+            logger.warning(
+                f"Trade skipped: Notional {notional:.2f} < Min {self.executor.min_notional}"
+            )
             return
 
         # Verify sufficient balance
         if decision == "BUY" and position_size > balance:
-            logger.warning(f"Trade skipped: Insufficient balance {balance:.2f} < Required {position_size:.2f}")
+            logger.warning(
+                f"Trade skipped: Insufficient balance {balance:.2f} < Required {position_size:.2f}"
+            )
             return
 
         # Execute order
@@ -659,14 +711,16 @@ class TradingEngine:
             logger.info(
                 f"✅ Trade executed: {decision} {result.executed_qty} @ {result.entry_price}"
             )
-            
+
             # --- UPDATE REASONING BANK ---
             try:
-                digest = decision_data.get('_reasoning_digest') or decision_data.get('reasoning_prompt_digest')
+                digest = decision_data.get("_reasoning_digest") or decision_data.get(
+                    "reasoning_prompt_digest"
+                )
                 if digest:
                     # For now, mark success as True and attach order id; reward will be computed asynchronously later
                     self.reasoning_bank.update_entry_outcome(
-                        agent_name='Decision Agent',
+                        agent_name="Decision Agent",
                         prompt_digest=digest,
                         success=True,
                         reward=0.0,
@@ -674,12 +728,13 @@ class TradingEngine:
                     )
             except Exception as e:
                 logger.debug(f"Failed to attach trade outcome to ReasoningBank: {e}")
-            
+
             # --- UPDATE RISK MANAGER ---
             if self.risk_manager and RISK_MANAGER_AVAILABLE:
                 try:
                     # Create trade record for metrics
                     from src.risk.runtime_risk_manager import TradeRecord
+
                     trade_record = TradeRecord(
                         trade_id=str(result.order_id) if result.order_id else "paper_trade",
                         timestamp=datetime.now(timezone.utc),
@@ -690,21 +745,27 @@ class TradingEngine:
                         pnl=0.0,  # Will be updated on close
                         pnl_pct=0.0,
                         success=True,  # Will be updated when result is known
-                        size=float(result.executed_qty) * float(result.entry_price) if result.executed_qty and result.entry_price else 0.0
+                        size=float(result.executed_qty) * float(result.entry_price)
+                        if result.executed_qty and result.entry_price
+                        else 0.0,
                     )
                     self.risk_manager.record_trade(trade_record)
-                    logger.info(f"Trade recorded in RiskManager: {self.risk_manager.current_status.describe()}")
+                    logger.info(
+                        f"Trade recorded in RiskManager: {self.risk_manager.current_status.describe()}"
+                    )
                 except Exception as e:
                     logger.warning(f"Could not record trade in RiskManager: {e}")
         else:
             logger.error(f"❌ Trade failed: {result.status} - {result.message}")
-            
+
             # --- UPDATE REASONING BANK FOR FAILED TRADE ---
             try:
-                digest = decision_data.get('_reasoning_digest') or decision_data.get('reasoning_prompt_digest')
+                digest = decision_data.get("_reasoning_digest") or decision_data.get(
+                    "reasoning_prompt_digest"
+                )
                 if digest:
                     self.reasoning_bank.update_entry_outcome(
-                        agent_name='Decision Agent',
+                        agent_name="Decision Agent",
                         prompt_digest=digest,
                         success=False,
                         reward=0.0,
@@ -712,11 +773,12 @@ class TradingEngine:
                     )
             except Exception as e:
                 logger.debug(f"Failed to attach failed trade outcome to ReasoningBank: {e}")
-            
+
             # --- UPDATE RISK MANAGER FOR FAILED TRADE ---
             if self.risk_manager and RISK_MANAGER_AVAILABLE:
                 try:
                     from src.risk.runtime_risk_manager import TradeRecord
+
                     trade_record = TradeRecord(
                         trade_id=str(result.order_id) if result.order_id else "failed_trade",
                         timestamp=datetime.now(timezone.utc),
@@ -727,7 +789,7 @@ class TradingEngine:
                         pnl=0.0,
                         pnl_pct=0.0,
                         success=False,
-                        size=0.0
+                        size=0.0,
                     )
                     self.risk_manager.record_trade(trade_record)
                 except Exception as e:
@@ -773,7 +835,9 @@ class TradingEngine:
             "paper_trading": self.paper_trading,
             "kline_count": self._kline_count,
             "consecutive_holds": self._consecutive_holds,
-            "last_decision_time": self._last_decision_time.isoformat() if self._last_decision_time else None,
+            "last_decision_time": self._last_decision_time.isoformat()
+            if self._last_decision_time
+            else None,
             "current_price": self.market_data.current_price,
             "langgraph_available": self._trading_graph is not None,
         }
@@ -782,6 +846,7 @@ class TradingEngine:
 # ============================================================================
 # Main function to run the engine
 # ============================================================================
+
 
 async def run_trading_engine(
     symbol: str = "BTCUSDT",
@@ -815,6 +880,7 @@ if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
 
     asyncio.run(

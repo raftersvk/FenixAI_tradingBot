@@ -118,7 +118,11 @@ _TRADE_HISTORY: List[dict] = []
 _AGENT_OUTPUTS: List[dict] = []
 
 # Logger
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 logger = logging.getLogger("FenixAPI")
 
 # Global Engine Instance
@@ -388,7 +392,7 @@ app.include_router(auth_router, tags=["auth"])  # Register Auth Routes
 # CORS FastAPI middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=".*",   # Autorise tout, compatible avec credentials
+    allow_origin_regex=".*",  # Autorise tout, compatible avec credentials
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

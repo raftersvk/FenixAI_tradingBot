@@ -6,6 +6,7 @@ para auditar cómo evoluciona la toma de decisiones. Sigue la filosofía del
 paper ReasoningBank: cada razonamiento se clasifica como una "experiencia"
 con metadatos ricos y se puede recuperar por palabras clave o por agente.
 """
+
 from __future__ import annotations
 
 import json
@@ -67,7 +68,7 @@ class ReasoningEntry:
         if query_lower in self.metadata.get("tags", "").lower():
             return True
         return False
-    
+
     def similarity_score(
         self,
         other_prompt: str,
@@ -253,7 +254,7 @@ class ReasoningBank:
         now = datetime.now()
         created_at_iso = now.astimezone().isoformat()  # Includes timezone
         analysis_timestamp = now.strftime("%Y-%m-%d %H:%M:%S %Z")  # Human readable
-        
+
         entry = ReasoningEntry(
             agent=agent_name,
             prompt_digest=digest,
@@ -272,7 +273,9 @@ class ReasoningBank:
         self._maybe_attach_embedding(entry)
 
         with self._lock:
-            agent_cache = self._cache.setdefault(agent_name, deque(maxlen=self.max_entries_per_agent))
+            agent_cache = self._cache.setdefault(
+                agent_name, deque(maxlen=self.max_entries_per_agent)
+            )
             agent_cache.append(entry)
             agent_file = self.storage_dir / f"{agent_name}.jsonl"
             with agent_file.open("a", encoding="utf-8") as fh:
@@ -307,24 +310,24 @@ class ReasoningBank:
         entries = self.get_recent(agent_name, self.max_entries_per_agent)
         matches = [entry for entry in reversed(entries) if entry.matches(query)]
         return matches[:limit]
-    
+
     def get_relevant_context(
         self,
         agent_name: str,
         current_prompt: str,
         limit: int = 3,
         min_similarity: float = 0.3,
-        prefer_successful: bool = True
+        prefer_successful: bool = True,
     ) -> List[ReasoningEntry]:
         """Recupera experiencias relevantes para inyectar en prompt (core del paper).
-        
+
         Args:
             agent_name: Nombre del agente
             current_prompt: Prompt actual para el cual buscar contexto
             limit: Máximo número de entradas a devolver
             min_similarity: Umbral mínimo de similitud (0-1)
             prefer_successful: Si True, prioriza experiencias exitosas
-        
+
         Returns:
             Lista de ReasoningEntry relevantes, ordenadas por relevancia
         """
@@ -336,7 +339,7 @@ class ReasoningBank:
             current_embedding = self._embed_text(current_prompt)
             if current_embedding is None:
                 logger.debug("ReasoningBank: fallback a similitud por palabras para %s", agent_name)
-        
+
         # Calcular similitud y filtrar
         scored_entries = []
         for entry in entries:
@@ -346,12 +349,12 @@ class ReasoningBank:
                 if prefer_successful and entry.success is True:
                     score *= 1.5
                 scored_entries.append((score, entry))
-        
+
         # Ordenar por score descendente
         scored_entries.sort(key=lambda x: x[0], reverse=True)
-        
+
         return [entry for _, entry in scored_entries[:limit]]
-    
+
     def update_entry_outcome(
         self,
         agent_name: str,
@@ -364,14 +367,14 @@ class ReasoningBank:
         reward_notes: Optional[str] = None,
     ) -> bool:
         """Actualiza una entrada con el resultado real del trade (self-judgment).
-        
+
         Args:
             agent_name: Nombre del agente
             prompt_digest: Digest del prompt a actualizar
             success: Si el trade fue exitoso
             reward: P&L del trade
             trade_id: ID del trade asociado
-        
+
         Returns:
             True si se actualizó exitosamente
         """
@@ -379,7 +382,7 @@ class ReasoningBank:
             agent_cache = self._cache.get(agent_name)
             if not agent_cache:
                 return False
-            
+
             # Buscar y actualizar en cache
             updated = False
             for entry in agent_cache:
@@ -394,21 +397,18 @@ class ReasoningBank:
                         entry.reward_notes = reward_notes
                     updated = True
                     break
-            
+
             if not updated:
                 return False
-            
+
             # Re-escribir archivo JSONL con datos actualizados
             if self._rewrite_agent_file(agent_name, agent_cache):
-                logger.info(f"ReasoningBank: Updated entry {prompt_digest[:8]} for {agent_name}")
+                logger.debug(f"ReasoningBank: Updated entry {prompt_digest[:8]} for {agent_name}")
                 return True
             return False
 
     def attach_judge_feedback(
-        self,
-        agent_name: str,
-        prompt_digest: str,
-        judge_payload: Dict[str, Any]
+        self, agent_name: str, prompt_digest: str, judge_payload: Dict[str, Any]
     ) -> bool:
         """Enlaza el veredicto del LLM-as-a-judge con la entrada de ReasoningBank."""
         if not judge_payload:
@@ -460,61 +460,62 @@ class ReasoningBank:
         except Exception as exc:
             logger.error(f"ReasoningBank: Failed to persist file for {agent_name}: {exc}")
             return False
-    
+
     def get_success_rate(self, agent_name: str, lookback: int = 50) -> Dict[str, Any]:
         """Calcula tasa de éxito para experiencias evaluadas."""
         entries = self.get_recent(agent_name, lookback)
         evaluated = [e for e in entries if e.success is not None]
-        
+
         if not evaluated:
             return {"total_evaluated": 0, "success_rate": 0.0, "avg_reward": 0.0}
-        
+
         successful = [e for e in evaluated if e.success]
         total_reward = sum(e.reward or 0.0 for e in evaluated)
-        
+
         return {
             "total_evaluated": len(evaluated),
             "successful": len(successful),
             "success_rate": len(successful) / len(evaluated),
             "avg_reward": total_reward / len(evaluated),
-            "total_reward": total_reward
+            "total_reward": total_reward,
         }
-    
+
     def extract_success_patterns(
-        self,
-        agent_name: str,
-        min_confidence: float = 0.7
+        self, agent_name: str, min_confidence: float = 0.7
     ) -> Dict[str, Any]:
         """Análisis contrastivo: qué diferencia éxitos de fracasos (core del paper).
-        
+
         Returns:
             Dict con patrones encontrados en experiencias exitosas vs fallidas
         """
         entries = self.get_recent(agent_name, self.max_entries_per_agent)
         evaluated = [e for e in entries if e.success is not None]
-        
+
         if len(evaluated) < 10:  # Mínimo para análisis estadístico
             return {"status": "insufficient_data", "evaluated_count": len(evaluated)}
-        
+
         successful = [e for e in evaluated if e.success]
         failed = [e for e in evaluated if not e.success]
-        
+
         # Análisis de acciones
         success_actions = [e.action for e in successful]
         fail_actions = [e.action for e in failed]
-        
+
         from collections import Counter
+
         success_action_counts = Counter(success_actions)
         fail_action_counts = Counter(fail_actions)
-        
+
         # Análisis de confidence
-        success_avg_conf = sum(e.confidence for e in successful) / len(successful) if successful else 0
+        success_avg_conf = (
+            sum(e.confidence for e in successful) / len(successful) if successful else 0
+        )
         fail_avg_conf = sum(e.confidence for e in failed) / len(failed) if failed else 0
-        
+
         # Patrones de alta confianza
         high_conf_success = [e for e in successful if e.confidence >= min_confidence]
         high_conf_fail = [e for e in failed if e.confidence >= min_confidence]
-        
+
         return {
             "status": "analyzed",
             "total_evaluated": len(evaluated),
@@ -524,52 +525,49 @@ class ReasoningBank:
             "avg_confidence": {
                 "successful": success_avg_conf,
                 "failed": fail_avg_conf,
-                "delta": success_avg_conf - fail_avg_conf
+                "delta": success_avg_conf - fail_avg_conf,
             },
             "action_patterns": {
                 "successful_actions": dict(success_action_counts.most_common(3)),
-                "failed_actions": dict(fail_action_counts.most_common(3))
+                "failed_actions": dict(fail_action_counts.most_common(3)),
             },
             "high_confidence_outcomes": {
                 "successful": len(high_conf_success),
                 "failed": len(high_conf_fail),
                 "accuracy_at_high_conf": (
                     len(high_conf_success) / (len(high_conf_success) + len(high_conf_fail))
-                    if (len(high_conf_success) + len(high_conf_fail)) > 0 else 0
-                )
+                    if (len(high_conf_success) + len(high_conf_fail)) > 0
+                    else 0
+                ),
             },
-            "insights": self._generate_insights(
-                successful, failed, min_confidence
-            )
+            "insights": self._generate_insights(successful, failed, min_confidence),
         }
-    
+
     def _generate_insights(
-        self,
-        successful: List[ReasoningEntry],
-        failed: List[ReasoningEntry],
-        min_confidence: float
+        self, successful: List[ReasoningEntry], failed: List[ReasoningEntry], min_confidence: float
     ) -> List[str]:
         """Genera insights textuales del análisis contrastivo."""
         insights = []
-        
+
         if not successful or not failed:
             return ["Insufficient data for contrastive analysis"]
-        
+
         # Insight 1: Confidence threshold
         success_avg_conf = sum(e.confidence for e in successful) / len(successful)
         fail_avg_conf = sum(e.confidence for e in failed) / len(failed)
-        
+
         if success_avg_conf > fail_avg_conf + 0.1:
             insights.append(
                 f"Successful decisions have {success_avg_conf:.1%} avg confidence "
                 f"vs {fail_avg_conf:.1%} for failed ones. Higher confidence correlates with success."
             )
-        
+
         # Insight 2: Action distribution
         from collections import Counter
+
         success_actions = Counter(e.action for e in successful)
         best_action = success_actions.most_common(1)[0] if success_actions else None
-        
+
         if best_action:
             action_name, action_count = best_action
             action_rate = action_count / len(successful)
@@ -577,11 +575,11 @@ class ReasoningBank:
                 insights.append(
                     f"Action '{action_name}' appears in {action_rate:.0%} of successful cases."
                 )
-        
+
         # Insight 3: Latency
         success_latencies = [e.latency_ms for e in successful if e.latency_ms]
         fail_latencies = [e.latency_ms for e in failed if e.latency_ms]
-        
+
         if success_latencies and fail_latencies:
             avg_success_lat = sum(success_latencies) / len(success_latencies)
             avg_fail_lat = sum(fail_latencies) / len(fail_latencies)
@@ -589,113 +587,131 @@ class ReasoningBank:
                 insights.append(
                     f"Latency differs: {avg_success_lat:.0f}ms (success) vs {avg_fail_lat:.0f}ms (fail)"
                 )
-        
+
         return insights if insights else ["No significant patterns detected"]
-    
+
     def synthesize_strategies(
-        self,
-        agent_name: str,
-        min_success_rate: float = 0.65,
-        min_sample_size: int = 10
+        self, agent_name: str, min_success_rate: float = 0.65, min_sample_size: int = 10
     ) -> List[Dict[str, Any]]:
         """Sintetiza estrategias generalizables a partir de experiencias (paper ReasoningBank).
-        
+
         Extrae patrones de alto nivel tipo "Cuando X, hacer Y resulta en Z".
-        
+
         Args:
             agent_name: Nombre del agente
             min_success_rate: Tasa mínima de éxito para considerar una estrategia
             min_sample_size: Mínimo de casos para validar una estrategia
-        
+
         Returns:
             Lista de estrategias sintetizadas con metadatos
         """
         entries = self.get_recent(agent_name, self.max_entries_per_agent)
         evaluated = [e for e in entries if e.success is not None]
-        
+
         if len(evaluated) < min_sample_size:
             return []
-        
+
         strategies = []
-        
+
         # Estrategia 1: Por nivel de confidence
         confidence_buckets = {
             "high": [e for e in evaluated if e.confidence >= 0.8],
             "medium": [e for e in evaluated if 0.5 <= e.confidence < 0.8],
-            "low": [e for e in evaluated if e.confidence < 0.5]
+            "low": [e for e in evaluated if e.confidence < 0.5],
         }
-        
+
         for bucket_name, bucket_entries in confidence_buckets.items():
             if len(bucket_entries) >= min_sample_size:
                 success_count = sum(1 for e in bucket_entries if e.success)
                 success_rate = success_count / len(bucket_entries)
-                
+
                 if success_rate >= min_success_rate:
-                    avg_reward = sum(e.reward or 0 for e in bucket_entries if e.success) / max(success_count, 1)
-                    strategies.append({
-                        "type": "confidence_threshold",
-                        "rule": f"When confidence is {bucket_name} (examples: {bucket_name})",
-                        "condition": f"confidence {'≥ 0.8' if bucket_name == 'high' else '0.5-0.8' if bucket_name == 'medium' else '< 0.5'}",
-                        "success_rate": success_rate,
-                        "sample_size": len(bucket_entries),
-                        "avg_reward": avg_reward,
-                        "recommendation": self._generate_recommendation(bucket_name, success_rate, avg_reward)
-                    })
-        
+                    avg_reward = sum(e.reward or 0 for e in bucket_entries if e.success) / max(
+                        success_count, 1
+                    )
+                    strategies.append(
+                        {
+                            "type": "confidence_threshold",
+                            "rule": f"When confidence is {bucket_name} (examples: {bucket_name})",
+                            "condition": f"confidence {'≥ 0.8' if bucket_name == 'high' else '0.5-0.8' if bucket_name == 'medium' else '< 0.5'}",
+                            "success_rate": success_rate,
+                            "sample_size": len(bucket_entries),
+                            "avg_reward": avg_reward,
+                            "recommendation": self._generate_recommendation(
+                                bucket_name, success_rate, avg_reward
+                            ),
+                        }
+                    )
+
         # Estrategia 2: Por acción específica
         from collections import defaultdict
+
         action_outcomes = defaultdict(list)
         for entry in evaluated:
             action_outcomes[entry.action].append(entry)
-        
+
         for action, action_entries in action_outcomes.items():
             if len(action_entries) >= min_sample_size:
                 success_count = sum(1 for e in action_entries if e.success)
                 success_rate = success_count / len(action_entries)
-                
+
                 if success_rate >= min_success_rate:
-                    avg_reward = sum(e.reward or 0 for e in action_entries if e.success) / max(success_count, 1)
-                    avg_conf = sum(e.confidence for e in action_entries if e.success) / max(success_count, 1)
-                    
-                    strategies.append({
-                        "type": "action_strategy",
-                        "rule": f"Action '{action}' is effective",
-                        "condition": f"action == {action}",
-                        "success_rate": success_rate,
-                        "sample_size": len(action_entries),
-                        "avg_reward": avg_reward,
-                        "avg_confidence": avg_conf,
-                        "recommendation": f"Continue using {action} when conditions are similar. Success rate: {success_rate:.1%}"
-                    })
-        
+                    avg_reward = sum(e.reward or 0 for e in action_entries if e.success) / max(
+                        success_count, 1
+                    )
+                    avg_conf = sum(e.confidence for e in action_entries if e.success) / max(
+                        success_count, 1
+                    )
+
+                    strategies.append(
+                        {
+                            "type": "action_strategy",
+                            "rule": f"Action '{action}' is effective",
+                            "condition": f"action == {action}",
+                            "success_rate": success_rate,
+                            "sample_size": len(action_entries),
+                            "avg_reward": avg_reward,
+                            "avg_confidence": avg_conf,
+                            "recommendation": f"Continue using {action} when conditions are similar. Success rate: {success_rate:.1%}",
+                        }
+                    )
+
         # Estrategia 3: Patrones temporales (latency)
         if any(e.latency_ms for e in evaluated):
-            latency_sorted = sorted([e for e in evaluated if e.latency_ms], key=lambda x: x.latency_ms or 0)
-            fast_entries = latency_sorted[:len(latency_sorted)//2]  # 50% más rápidos
-            slow_entries = latency_sorted[len(latency_sorted)//2:]
-            
+            latency_sorted = sorted(
+                [e for e in evaluated if e.latency_ms], key=lambda x: x.latency_ms or 0
+            )
+            fast_entries = latency_sorted[: len(latency_sorted) // 2]  # 50% más rápidos
+            slow_entries = latency_sorted[len(latency_sorted) // 2 :]
+
             if len(fast_entries) >= min_sample_size:
                 fast_success = sum(1 for e in fast_entries if e.success) / len(fast_entries)
                 slow_success = sum(1 for e in slow_entries if e.success) / len(slow_entries)
-                
+
                 if abs(fast_success - slow_success) > 0.15:  # Diferencia significativa
                     better_group = "fast" if fast_success > slow_success else "slow"
-                    strategies.append({
-                        "type": "latency_pattern",
-                        "rule": f"{better_group.capitalize()} responses tend to be more successful",
-                        "condition": f"latency {'<' if better_group == 'fast' else '>'} {sum(e.latency_ms or 0 for e in latency_sorted) / len(latency_sorted):.0f}ms",
-                        "success_rate": fast_success if better_group == "fast" else slow_success,
-                        "sample_size": len(fast_entries),
-                        "delta": abs(fast_success - slow_success),
-                        "recommendation": f"Monitor inference latency. {better_group.capitalize()} responses show {abs(fast_success - slow_success):.1%} better success rate."
-                    })
-        
+                    strategies.append(
+                        {
+                            "type": "latency_pattern",
+                            "rule": f"{better_group.capitalize()} responses tend to be more successful",
+                            "condition": f"latency {'<' if better_group == 'fast' else '>'} {sum(e.latency_ms or 0 for e in latency_sorted) / len(latency_sorted):.0f}ms",
+                            "success_rate": fast_success
+                            if better_group == "fast"
+                            else slow_success,
+                            "sample_size": len(fast_entries),
+                            "delta": abs(fast_success - slow_success),
+                            "recommendation": f"Monitor inference latency. {better_group.capitalize()} responses show {abs(fast_success - slow_success):.1%} better success rate.",
+                        }
+                    )
+
         # Ordenar por success_rate * sample_size (combina calidad y confianza estadística)
         strategies.sort(key=lambda s: s["success_rate"] * s["sample_size"], reverse=True)
-        
+
         return strategies
-    
-    def _generate_recommendation(self, bucket_name: str, success_rate: float, avg_reward: float) -> str:
+
+    def _generate_recommendation(
+        self, bucket_name: str, success_rate: float, avg_reward: float
+    ) -> str:
         """Genera recomendación basada en métricas."""
         if bucket_name == "high" and success_rate > 0.75:
             return f"STRONG BUY: High confidence trades show {success_rate:.1%} success with avg {avg_reward:+.2f}% reward"
@@ -710,14 +726,14 @@ class ReasoningBank:
         stats = self._stats.get(agent_name, {})
         recent = self.get_recent(agent_name, limit=3)
         success_stats = self.get_success_rate(agent_name, lookback=100)
-        
+
         return {
             "agent": agent_name,
             "total_reasonings": stats.get("total", 0),
             "last_recorded": stats.get("last_recorded"),
             "recent_summaries": [entry.reasoning[:200] for entry in recent],
             "performance": success_stats,
-            "has_evaluated_data": success_stats["total_evaluated"] > 0
+            "has_evaluated_data": success_stats["total_evaluated"] > 0,
         }
 
 
@@ -727,7 +743,7 @@ _reasoning_bank_lock = threading.Lock()
 
 def get_reasoning_bank() -> ReasoningBank:
     """Get singleton ReasoningBank instance.
-    
+
     Note: Embeddings disabled by default to prevent memory issues on macOS.
     Uses Jaccard similarity fallback instead.
     """
