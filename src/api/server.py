@@ -127,16 +127,41 @@ _engine_task: asyncio.Task | None = None
 _METRICS_HISTORY: deque[dict] = deque(maxlen=240)
 _PROCESS_START = time.time()
 
-# 1. Socket.IO — autoriser toutes les origines (ou lire depuis env)
-import os
+# Socket.IO CORS — normaliser les origins avec scheme et port
+_cors_env = os.getenv("CORS_ALLOWED_ORIGINS", "")
 
-_cors_origins = os.getenv("CORS_ALLOWED_ORIGINS", "[]")
-_sio_origins = _cors_origins.split(",") if "," in _cors_origins else _cors_origins
 
+def _build_socketio_origins(cors_value: str) -> list[str] | str:
+    """Construit la liste des origins acceptées par Socket.IO."""
+    if not cors_value.strip() or cors_value.strip() == "*":
+        return "*"
+    raw_origins = [o.strip() for o in cors_value.split(",") if o.strip()]
+    origins: list[str] = []
+    for origin in raw_origins:
+        if "://" in origin:
+            origins.append(origin)
+            continue
+        for port in [5173, 3000, 8080, 80, 443]:
+            origins.append(f"http://{origin}:{port}")
+            origins.append(f"https://{origin}:{port}")
+        origins.append(f"http://{origin}")
+        origins.append(f"https://{origin}")
+    # Deduplicate
+    seen: set[str] = set()
+    return [o for o in origins if not (o in seen or seen.add(o))]
+
+
+_sio_origins = _build_socketio_origins(_cors_env)
+
+# FastAPI CORS origins (convertit "*" en ["*"] pour le middleware)
+_fastapi_origins = ["*"] if _sio_origins == "*" else _sio_origins
+
+# Créer le serveur Socket.IO avec CORS
 sio = socketio.AsyncServer(
-    async_mode='asgi',
-    cors_allowed_origins=_sio_origins
+    async_mode="asgi",
+    cors_allowed_origins=[],  # FastAPI CORSMiddleware gère le CORS
 )
+
 
 async def handle_engine_event(event_type: str, data: dict):
     """Handle events emitted by the trading engine."""
@@ -323,7 +348,11 @@ async def lifespan(app: FastAPI):
             await _engine_task
 
 
-# FastAPI App with OpenAPI Metadata
+# =============================================================================
+# Combined ASGI Application Setup
+# =============================================================================
+
+# 1. Create FastAPI app first
 app = FastAPI(
     title="FenixAI Trading Bot API",
     description="""
@@ -355,14 +384,11 @@ Most endpoints require JWT authentication. Use `/api/auth/login` to obtain a tok
     lifespan=lifespan,
 )
 app.include_router(auth_router, tags=["auth"])  # Register Auth Routes
-app_socketio = socketio.ASGIApp(sio, app)
 
-# CORS - limitar a orígenes conocidos
-_fastapi_origins = _cors_origins.split(",") if "," in _cors_origins else ["*"]
-
+# CORS FastAPI middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_fastapi_origins,
+    allow_origin_regex=".*",   # Autorise tout, compatible avec credentials
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -1389,7 +1415,8 @@ async def search_reasoning(
 
 @sio.event
 async def connect(sid, environ):
-    logger.info(f"Socket connected: {sid}")
+    origin = environ.get("HTTP_ORIGIN", environ.get("Origin", "no-origin"))
+    logger.info(f"[SocketIO] Client connected: sid={sid}, origin={origin}")
 
 
 @sio.event
@@ -1402,6 +1429,9 @@ async def subscribe_system(sid):
     logger.info(f"Client {sid} subscribed to system")
 
 
+# Wrap FastAPI with Socket.IO for WebSocket support
+app = socketio.ASGIApp(sio, app)
+
 if __name__ == "__main__":
     import uvicorn
 
@@ -1411,4 +1441,4 @@ if __name__ == "__main__":
         logger.warning("ALLOW_EXPOSE_API is set: the API will bind to 0.0.0.0 (external exposure)")
     else:
         logger.info("Binding to 127.0.0.1 by default. Set ALLOW_EXPOSE_API=true to bind to 0.0.0.0")
-    uvicorn.run("src.api.server:app_socketio", host=host, port=8000, reload=True)
+    uvicorn.run("src.api.server:app", host=host, port=8000, reload=True)
