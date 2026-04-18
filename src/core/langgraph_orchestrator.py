@@ -1175,11 +1175,21 @@ def create_sentiment_agent_node(llm: Any, reasoning_bank: Any = None):
             try:
                 if reasoning_bank and REASONING_BANK_AVAILABLE:
                     prompt_snippet = messages[1]["content"][:500] if messages and len(messages) > 1 else ""
+                    # Map overall_sentiment → action in ReasoningBank
+                    sentiment_map = {"POSITIVE": "BUY", "NEGATIVE": "SELL", "NEUTRAL": "HOLD"}
+                    report_for_bank = {
+                        **report,
+                        "action": sentiment_map.get(
+                            str(report.get("overall_sentiment", "NEUTRAL")).upper(), 
+                            "HOLD"
+                        )
+                    }
+
                     digest = store_agent_decision(
                         reasoning_bank=reasoning_bank,
                         agent_name="sentiment_agent",
                         prompt=prompt_snippet,
-                        result=report,
+                        result=report_for_bank,
                         raw_response=raw_response,
                         backend=getattr(llm, 'model', 'langchain'),
                         latency_ms=elapsed * 1000,
