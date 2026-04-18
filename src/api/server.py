@@ -121,11 +121,16 @@ _engine_task: asyncio.Task | None = None
 _METRICS_HISTORY: deque[dict] = deque(maxlen=240)
 _PROCESS_START = time.time()
 
-# Socket.IO Server
-sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins=[
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-])
+# 1. Socket.IO — autoriser toutes les origines (ou lire depuis env)
+import os
+
+_cors_origins = os.getenv("CORS_ALLOWED_ORIGINS", "[]")
+_sio_origins = _cors_origins.split(",") if "," in _cors_origins else _cors_origins
+
+sio = socketio.AsyncServer(
+    async_mode='asgi',
+    cors_allowed_origins=_sio_origins
+)
 
 async def handle_engine_event(event_type: str, data: dict):
     """Handle events emitted by the trading engine."""
@@ -327,13 +332,11 @@ app.include_router(auth_router, tags=["auth"])  # Register Auth Routes
 app_socketio = socketio.ASGIApp(sio, app)
 
 # CORS - limitar a orígenes conocidos
+_fastapi_origins = _cors_origins.split(",") if "," in _cors_origins else ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-    ],
+    allow_origins=_fastapi_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
