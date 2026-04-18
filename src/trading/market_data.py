@@ -1,13 +1,14 @@
 # src/trading/market_data.py
 """
-Gestión de datos de mercado en tiempo real para Fenix Trading Bot.
+Real-time market data management for Fenix Trading Bot.
 
-Este módulo centraliza:
-- Conexión WebSocket a Binance
-- Procesamiento de klines (velas)
-- Order book y microestructura (OBI, CVD)
-- Cache de indicadores técnicos
+This module centralizes:
+- WebSocket connection to Binance
+- Klines (candlesticks) processing
+- Order book and microstructure (OBI, CVD)
+- Technical indicators cache
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -27,22 +28,23 @@ logger = logging.getLogger("FenixMarketData")
 
 @dataclass
 class OrderBookSnapshot:
-    """Snapshot del order book con bids y asks."""
+    """Order book snapshot with bids and asks."""
+
     bids: list[list[float]] = field(default_factory=list)
     asks: list[list[float]] = field(default_factory=list)
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    
+
     def get_best_bid(self) -> float:
         return self.bids[0][0] if self.bids else 0.0
-    
+
     def get_best_ask(self) -> float:
         return self.asks[0][0] if self.asks else 0.0
-    
+
     def get_spread(self) -> float:
         if self.bids and self.asks:
             return self.asks[0][0] - self.bids[0][0]
         return 0.0
-    
+
     def get_mid_price(self) -> float:
         if self.bids and self.asks:
             return (self.bids[0][0] + self.asks[0][0]) / 2
@@ -52,13 +54,14 @@ class OrderBookSnapshot:
 @dataclass
 class MicrostructureMetrics:
     """Métricas de microestructura del mercado."""
+
     obi: float = 1.0  # Order Book Imbalance
     cvd: float = 0.0  # Cumulative Volume Delta
     spread: float = 0.0
     bid_depth: float = 0.0
     ask_depth: float = 0.0
     liquidity: float = 0.0
-    
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "obi": self.obi,
@@ -72,15 +75,15 @@ class MicrostructureMetrics:
 
 class MarketDataManager:
     """
-    Gestiona datos de mercado en tiempo real.
-    
-    Responsabilidades:
-    - WebSocket connections a Binance
-    - Procesamiento de klines
-    - Cálculo de métricas de microestructura
-    - Buffer de trades para CVD
+    Manages real-time market data.
+
+    Responsibilities:
+    - WebSocket connections to Binance
+    - Klines processing
+    - Microstructure metrics calculation
+    - Trades buffer for CVD
     """
-    
+
     def __init__(
         self,
         symbol: str = "BTCUSDT",
@@ -90,61 +93,61 @@ class MarketDataManager:
         self.symbol = symbol.upper()
         self.timeframe = timeframe
         self.use_testnet = use_testnet
-        
+
         # WebSocket URLs
         base_url = "stream.binancefuture" if use_testnet else "fstream.binance"
         self.kline_ws_url = f"wss://{base_url}.com/ws/{self.symbol.lower()}@kline_{timeframe}"
         self.depth_ws_url = f"wss://{base_url}.com/ws/{self.symbol.lower()}@depth20@100ms"
         self.trade_ws_url = f"wss://{base_url}.com/ws/{self.symbol.lower()}@aggTrade"
-        
+
         # State
         self.orderbook = OrderBookSnapshot()
         self.trade_buffer: deque = deque(maxlen=500)
         self.cvd_value: float = 0.0
         self.current_price: float = 0.0
         self.current_volume: float = 0.0
-        
+
         # Callbacks
         self._kline_callbacks: list[Callable] = []
         self._microstructure_callbacks: list[Callable] = []
-        
+
         # Tasks
         self._tasks: list[asyncio.Task] = []
         self._running = False
-        
+
         logger.info(f"MarketDataManager initialized for {symbol}@{timeframe}")
-    
+
     def on_kline(self, callback: Callable[[dict], None]) -> None:
-        """Registra callback para nuevas klines."""
+        """Registers callback for new klines."""
         self._kline_callbacks.append(callback)
-    
+
     def on_microstructure_update(self, callback: Callable[[MicrostructureMetrics], None]) -> None:
-        """Registra callback para actualizaciones de microestructura."""
+        """Registers callback for microstructure updates."""
         self._microstructure_callbacks.append(callback)
-    
+
     async def start(self) -> None:
-        """Inicia todas las conexiones WebSocket."""
+        """Starts all WebSocket connections."""
         if self._running:
             logger.warning("MarketDataManager already running")
             return
-        
+
         self._running = True
         logger.info(f"Starting MarketDataManager for {self.symbol}")
 
-        # Prefill de velas históricas para evitar gráficos vacíos en timeframes cortos
+        # Prefill historical klines to avoid empty charts on short timeframes
         await self._prefill_klines()
-        
-        # Iniciar tareas de WebSocket
+
+        # Start WebSocket tasks
         self._tasks = [
             asyncio.create_task(self._run_kline_ws()),
             asyncio.create_task(self._run_depth_ws()),
             asyncio.create_task(self._run_trade_ws()),
         ]
-        
+
         logger.info("All WebSocket connections started")
 
     async def _prefill_klines(self, limit: int = 200) -> None:
-        """Carga velas históricas al iniciar para llenar buffers y gráficos."""
+        """Loads historical klines at startup to fill buffers and charts."""
         try:
             client = BinanceClient(testnet=self.use_testnet)
             if not await client.connect():
@@ -186,106 +189,106 @@ class MarketDataManager:
 
         except Exception as e:
             logger.warning(f"Prefill klines failed: {e}")
-    
+
     async def stop(self) -> None:
-        """Detiene todas las conexiones."""
+        """Stops all connections."""
         self._running = False
-        
+
         for task in self._tasks:
             task.cancel()
-        
+
         if self._tasks:
             await asyncio.gather(*self._tasks, return_exceptions=True)
-        
+
         self._tasks.clear()
         logger.info("MarketDataManager stopped")
-    
+
     async def _run_kline_ws(self) -> None:
-        """WebSocket para klines."""
+        """WebSocket for klines."""
         while self._running:
             try:
                 async with websockets.connect(self.kline_ws_url) as ws:
                     logger.info(f"Connected to kline stream: {self.kline_ws_url}")
-                    
+
                     async for message in ws:
                         if not self._running:
                             break
-                        
+
                         try:
                             data = json.loads(message)
                             await self._process_kline(data)
                         except json.JSONDecodeError as e:
                             logger.error(f"JSON decode error in kline: {e}")
-                            
+
             except websockets.ConnectionClosed:
                 logger.warning("Kline WS connection closed, reconnecting...")
                 await asyncio.sleep(5)
             except Exception as e:
                 logger.error(f"Kline WS error: {e}")
                 await asyncio.sleep(5)
-    
+
     async def _run_depth_ws(self) -> None:
-        """WebSocket para order book depth."""
+        """WebSocket for order book depth."""
         while self._running:
             try:
                 async with websockets.connect(self.depth_ws_url) as ws:
                     logger.info(f"Connected to depth stream: {self.depth_ws_url}")
-                    
+
                     async for message in ws:
                         if not self._running:
                             break
-                        
+
                         try:
                             data = json.loads(message)
                             self._update_orderbook(data)
                         except json.JSONDecodeError as e:
                             logger.error(f"JSON decode error in depth: {e}")
-                            
+
             except websockets.ConnectionClosed:
                 logger.warning("Depth WS connection closed, reconnecting...")
                 await asyncio.sleep(5)
             except Exception as e:
                 logger.error(f"Depth WS error: {e}")
                 await asyncio.sleep(5)
-    
+
     async def _run_trade_ws(self) -> None:
-        """WebSocket para trades (CVD calculation)."""
+        """WebSocket for trades (CVD calculation)."""
         while self._running:
             try:
                 async with websockets.connect(self.trade_ws_url) as ws:
                     logger.info(f"Connected to trade stream: {self.trade_ws_url}")
-                    
+
                     async for message in ws:
                         if not self._running:
                             break
-                        
+
                         try:
                             data = json.loads(message)
                             self._update_cvd(data)
                         except json.JSONDecodeError as e:
                             logger.error(f"JSON decode error in trades: {e}")
-                            
+
             except websockets.ConnectionClosed:
                 logger.warning("Trade WS connection closed, reconnecting...")
                 await asyncio.sleep(5)
             except Exception as e:
                 logger.error(f"Trade WS error: {e}")
                 await asyncio.sleep(5)
-    
+
     async def _process_kline(self, data: dict) -> None:
         """Procesa datos de kline recibidos."""
         if "k" not in data:
             return
-        
+
         kline = data["k"]
-        
-        # Actualizar precio actual
+
+        # Update current price
         self.current_price = float(kline.get("c", 0))
         self.current_volume = float(kline.get("v", 0))
-        
+
         # Solo notificar cuando la vela cierra
         is_closed = kline.get("x", False)
-        
+
         kline_data = {
             "symbol": kline.get("s"),
             "timeframe": kline.get("i"),
@@ -299,7 +302,7 @@ class MarketDataManager:
             "is_closed": is_closed,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
-        
+
         # Notificar callbacks
         for callback in self._kline_callbacks:
             try:
@@ -309,23 +312,23 @@ class MarketDataManager:
                     callback(kline_data)
             except Exception as e:
                 logger.error(f"Error in kline callback: {e}")
-    
+
     def _update_orderbook(self, data: dict) -> None:
-        """Actualiza snapshot del order book."""
+        """Updates order book snapshot."""
         bids = [[float(p), float(q)] for p, q in data.get("bids", data.get("b", []))]
         asks = [[float(p), float(q)] for p, q in data.get("asks", data.get("a", []))]
-        
+
         self.orderbook = OrderBookSnapshot(
             bids=bids,
             asks=asks,
             timestamp=datetime.now(timezone.utc),
         )
-    
+
     def _update_cvd(self, data: dict) -> None:
-        """Actualiza CVD con nuevo trade."""
+        """Updates CVD with new trade."""
         qty = float(data.get("q", 0))
         is_buyer_maker = data.get("m", False)
-        
+
         # Si buyer es maker, el trade es una venta agresiva
         if is_buyer_maker:
             self.cvd_value -= qty
@@ -333,26 +336,28 @@ class MarketDataManager:
         else:
             self.cvd_value += qty
             side = "buy"
-        
-        self.trade_buffer.append({
-            "qty": qty,
-            "side": side,
-            "price": float(data.get("p", 0)),
-            "timestamp": datetime.now(timezone.utc),
-        })
-    
+
+        self.trade_buffer.append(
+            {
+                "qty": qty,
+                "side": side,
+                "price": float(data.get("p", 0)),
+                "timestamp": datetime.now(timezone.utc),
+            }
+        )
+
     def get_microstructure_metrics(self) -> MicrostructureMetrics:
-        """Calcula y retorna métricas de microestructura actuales."""
-        # Tomar top 5 niveles para cálculos
+        """Calculates and returns current microstructure metrics."""
+        # Take top 5 levels for calculations
         bids = self.orderbook.bids[:5]
         asks = self.orderbook.asks[:5]
-        
+
         bid_volume = sum(q for _, q in bids) if bids else 0
         ask_volume = sum(q for _, q in asks) if asks else 0
-        
+
         # Order Book Imbalance
         obi = bid_volume / ask_volume if ask_volume > 0 else 1.0
-        
+
         return MicrostructureMetrics(
             obi=obi,
             cvd=self.cvd_value,
@@ -361,11 +366,11 @@ class MarketDataManager:
             ask_depth=ask_volume,
             liquidity=bid_volume + ask_volume,
         )
-    
+
     def get_current_state(self) -> dict[str, Any]:
-        """Retorna estado actual completo."""
+        """Returns complete current state."""
         metrics = self.get_microstructure_metrics()
-        
+
         return {
             "symbol": self.symbol,
             "timeframe": self.timeframe,
@@ -380,7 +385,7 @@ class MarketDataManager:
 
 
 # ============================================================================
-# Factory para crear instancias
+# Factory to create instances
 # ============================================================================
 
 _market_data_instance: MarketDataManager | None = None
@@ -394,12 +399,12 @@ def get_market_data_manager(
 ) -> MarketDataManager:
     """Singleton factory para MarketDataManager."""
     global _market_data_instance
-    
+
     if _market_data_instance is None or force_new:
         _market_data_instance = MarketDataManager(
             symbol=symbol,
             timeframe=timeframe,
             use_testnet=use_testnet,
         )
-    
+
     return _market_data_instance

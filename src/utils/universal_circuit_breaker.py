@@ -12,40 +12,45 @@ logger = logging.getLogger(__name__)
 
 
 class CircuitState(Enum):
-    CLOSED = "closed"      # Normal operation
-    OPEN = "open"          # Circuit is open, calls fail fast
+    CLOSED = "closed"  # Normal operation
+    OPEN = "open"  # Circuit is open, calls fail fast
     HALF_OPEN = "half_open"  # Testing if service is back
 
 
 class CircuitOpenException(Exception):
-    """Excepción lanzada cuando el circuit breaker está abierto"""
+    """Exception raised when circuit breaker is open"""
+
     pass
 
 
 class ServiceUnavailableException(Exception):
-    """Excepción lanzada cuando el servicio no está disponible"""
+    """Exception raised when service is not available"""
+
     pass
 
 
 @dataclass
 class CircuitBreakerConfig:
-    """Configuración del Circuit Breaker"""
+    """Circuit Breaker Configuration"""
+
     failure_threshold: int = 5
-    recovery_timeout_seconds: int = 60  # segundos
+    recovery_timeout_seconds: int = 60  # seconds
     half_open_max_calls: int = 3
     success_threshold: int = 2
 
-    # Mantener compatibilidad con recovery_timeout
+    # Maintain compatibility with recovery_timeout
     @property
     def recovery_timeout(self) -> int:
         return self.recovery_timeout_seconds
+
     timeout: float = 30.0
     expected_exception: tuple = (Exception,)
 
 
 @dataclass
 class CallResult:
-    """Resultado de una llamada"""
+    """Result of a call"""
+
     success: bool
     timestamp: float
     duration: float
@@ -53,7 +58,7 @@ class CallResult:
 
 
 class UniversalCircuitBreaker:
-    """Circuit breaker universal con estrategias de fallback"""
+    """Universal circuit breaker with fallback strategies"""
 
     def __init__(self, service_name: str, config: CircuitBreakerConfig | None = None):
         self.service_name = service_name
@@ -66,21 +71,21 @@ class UniversalCircuitBreaker:
         self.call_history = deque(maxlen=100)
         self.fallback_strategies = {}
         self.metrics = {
-            'total_calls': 0,
-            'successful_calls': 0,
-            'failed_calls': 0,
-            'circuit_opens': 0,
-            'fallback_calls': 0
+            "total_calls": 0,
+            "successful_calls": 0,
+            "failed_calls": 0,
+            "circuit_opens": 0,
+            "fallback_calls": 0,
         }
 
     def add_fallback_strategy(self, strategy_name: str, fallback_func: Callable):
-        """Agregar estrategia de fallback"""
+        """Add fallback strategy"""
         self.fallback_strategies[strategy_name] = fallback_func
         logger.info(f"Added fallback strategy '{strategy_name}' for {self.service_name}")
 
     async def call(self, func: Callable, *args, **kwargs) -> Any:
-        """Ejecutar función con circuit breaker"""
-        self.metrics['total_calls'] += 1
+        """Execute function with circuit breaker"""
+        self.metrics["total_calls"] += 1
 
         if self.state == CircuitState.OPEN:
             if self._should_attempt_reset():
@@ -94,21 +99,25 @@ class UniversalCircuitBreaker:
 
         return await self._execute_call(func, *args, **kwargs)
 
-    async def execute_with_fallback(self, primary_func: Callable, fallback_strategy: str = None, *args, **kwargs) -> Any:
-        """Ejecutar con estrategia de fallback automática"""
+    async def execute_with_fallback(
+        self, primary_func: Callable, fallback_strategy: str = None, *args, **kwargs
+    ) -> Any:
+        """Execute with automatic fallback strategy"""
         try:
             return await self.call(primary_func, *args, **kwargs)
         except CircuitOpenException:
             if fallback_strategy and fallback_strategy in self.fallback_strategies:
-                self.metrics['fallback_calls'] += 1
-                logger.warning(f"Using fallback strategy '{fallback_strategy}' for {self.service_name}")
+                self.metrics["fallback_calls"] += 1
+                logger.warning(
+                    f"Using fallback strategy '{fallback_strategy}' for {self.service_name}"
+                )
                 return await self.fallback_strategies[fallback_strategy](*args, **kwargs)
             else:
-                # Intentar fallback automático
+                # Try automatic fallback
                 return await self._try_automatic_fallback(*args, **kwargs)
 
     async def _execute_call(self, func: Callable, *args, **kwargs) -> Any:
-        """Ejecutar llamada y manejar resultado"""
+        """Execute call and handle result"""
         start_time = time.time()
 
         try:
@@ -127,8 +136,8 @@ class UniversalCircuitBreaker:
             raise
 
     def _record_success(self, duration: float):
-        """Registrar llamada exitosa"""
-        self.metrics['successful_calls'] += 1
+        """Record successful call"""
+        self.metrics["successful_calls"] += 1
         self.call_history.append(CallResult(True, time.time(), duration))
 
         if self.state == CircuitState.HALF_OPEN:
@@ -139,8 +148,8 @@ class UniversalCircuitBreaker:
             self.failure_count = 0
 
     def _record_failure(self, exception: Exception, duration: float):
-        """Registrar llamada fallida"""
-        self.metrics['failed_calls'] += 1
+        """Record failed call"""
+        self.metrics["failed_calls"] += 1
         self.call_history.append(CallResult(False, time.time(), duration, exception))
 
         if isinstance(exception, self.config.expected_exception):
@@ -153,11 +162,11 @@ class UniversalCircuitBreaker:
                 self._move_to_open()
 
     def _should_attempt_reset(self) -> bool:
-        """Verificar si se debe intentar reset del circuit"""
+        """Check if we should attempt to reset the circuit."""
         return time.time() - self.last_failure_time >= self.config.recovery_timeout
 
     def _move_to_closed(self):
-        """Mover circuit breaker a estado CLOSED"""
+        """Move circuit breaker to CLOSED state."""
         self.state = CircuitState.CLOSED
         self.failure_count = 0
         self.success_count = 0
@@ -165,25 +174,25 @@ class UniversalCircuitBreaker:
         logger.info(f"Circuit breaker CLOSED for {self.service_name}")
 
     def _move_to_open(self):
-        """Mover circuit breaker a estado OPEN"""
+        """Move circuit breaker to OPEN state."""
         self.state = CircuitState.OPEN
-        self.metrics['circuit_opens'] += 1
+        self.metrics["circuit_opens"] += 1
         logger.warning(f"Circuit breaker OPENED for {self.service_name}")
 
     def _move_to_half_open(self):
-        """Mover circuit breaker a estado HALF_OPEN"""
+        """Move circuit breaker to HALF_OPEN state."""
         self.state = CircuitState.HALF_OPEN
         self.half_open_calls = 0
         self.success_count = 0
         logger.info(f"Circuit breaker HALF_OPEN for {self.service_name}")
 
     async def _try_automatic_fallback(self, *args, **kwargs) -> Any:
-        """Intentar fallback automático basado en el tipo de servicio"""
-        if self.service_name.lower() == 'binance':
+        """Try automatic fallback based on service type."""
+        if self.service_name.lower() == "binance":
             return await self._binance_fallback(*args, **kwargs)
-        elif self.service_name.lower() in ['openai', 'anthropic']:
+        elif self.service_name.lower() in ["openai", "anthropic"]:
             return await self._llm_fallback(*args, **kwargs)
-        elif self.service_name.lower() == 'mlx':
+        elif self.service_name.lower() == "mlx":
             return await self._mlx_fallback(*args, **kwargs)
         else:
             raise ServiceUnavailableException(f"No fallback available for {self.service_name}")
@@ -205,58 +214,61 @@ class UniversalCircuitBreaker:
         return {"prediction": 0.0, "confidence": 0.0, "fallback": True}
 
     def get_metrics(self) -> dict[str, Any]:
-        """Obtener métricas del circuit breaker"""
+        """Get metrics from circuit breaker."""
         success_rate = 0
-        if self.metrics['total_calls'] > 0:
-            success_rate = self.metrics['successful_calls'] / self.metrics['total_calls']
+        if self.metrics["total_calls"] > 0:
+            success_rate = self.metrics["successful_calls"] / self.metrics["total_calls"]
 
         avg_response_time = 0
         if self.call_history:
-            avg_response_time = sum(call.duration for call in self.call_history) / len(self.call_history)
+            avg_response_time = sum(call.duration for call in self.call_history) / len(
+                self.call_history
+            )
 
         return {
-            'service_name': self.service_name,
-            'state': self.state.value,
-            'failure_count': self.failure_count,
-            'success_rate': success_rate,
-            'avg_response_time': avg_response_time,
-            **self.metrics
+            "service_name": self.service_name,
+            "state": self.state.value,
+            "failure_count": self.failure_count,
+            "success_rate": success_rate,
+            "avg_response_time": avg_response_time,
+            **self.metrics,
         }
 
     def reset(self):
-        """Reset manual del circuit breaker"""
+        """Manual reset of circuit breaker."""
         self._move_to_closed()
         logger.info(f"Circuit breaker manually reset for {self.service_name}")
 
 
 class CircuitBreakerManager:
-    """Gestor centralizado de circuit breakers"""
+    """Centralized circuit breaker manager."""
 
     def __init__(self):
         self.circuit_breakers: dict[str, UniversalCircuitBreaker] = {}
         self.global_config = CircuitBreakerConfig()
 
-    def get_circuit_breaker(self, service_name: str, config: CircuitBreakerConfig | None = None) -> UniversalCircuitBreaker:
-        """Obtener o crear circuit breaker para un servicio"""
+    def get_circuit_breaker(
+        self, service_name: str, config: CircuitBreakerConfig | None = None
+    ) -> UniversalCircuitBreaker:
+        """Get or create circuit breaker for a service."""
         if service_name not in self.circuit_breakers:
             self.circuit_breakers[service_name] = UniversalCircuitBreaker(
-                service_name,
-                config or self.global_config
+                service_name, config or self.global_config
             )
         return self.circuit_breakers[service_name]
 
     def get_all_metrics(self) -> dict[str, dict[str, Any]]:
-        """Obtener métricas de todos los circuit breakers"""
+        """Get metrics from all circuit breakers."""
         return {name: cb.get_metrics() for name, cb in self.circuit_breakers.items()}
 
     def reset_all(self):
-        """Reset de todos los circuit breakers"""
+        """Reset all circuit breakers."""
         for cb in self.circuit_breakers.values():
             cb.reset()
         logger.info("All circuit breakers reset")
 
     async def health_check(self) -> dict[str, str]:
-        """Verificar salud de todos los servicios"""
+        """Check health of all services."""
         health_status = {}
         for name, cb in self.circuit_breakers.items():
             if cb.state == CircuitState.OPEN:
@@ -272,11 +284,13 @@ class CircuitBreakerManager:
 _circuit_breaker_manager = CircuitBreakerManager()
 
 
-def get_circuit_breaker(service_name: str, config: CircuitBreakerConfig | None = None) -> UniversalCircuitBreaker:
+def get_circuit_breaker(
+    service_name: str, config: CircuitBreakerConfig | None = None
+) -> UniversalCircuitBreaker:
     """Función de conveniencia para obtener circuit breaker"""
     return _circuit_breaker_manager.get_circuit_breaker(service_name, config)
 
 
 def get_circuit_breaker_manager() -> CircuitBreakerManager:
-    """Obtener gestor de circuit breakers"""
+    """Get circuit breaker manager."""
     return _circuit_breaker_manager

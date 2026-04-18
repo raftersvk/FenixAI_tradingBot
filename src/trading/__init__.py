@@ -2,14 +2,14 @@
 """
 Fenix Trading Module.
 
-Este módulo contiene el núcleo refactorizado del sistema de trading,
-organizado de forma modular y mantenible.
+This module contains the refactored core of the trading system,
+organized in a modular and maintainable way.
 
-Componentes principales:
-- TradingEngine: Motor principal de trading
-- OrderExecutor: Ejecutor de órdenes a Binance
-- MarketDataManager: Gestión de datos de mercado en tiempo real
-- PositionManager: Gestión de posiciones abiertas
+Main components:
+- TradingEngine: Main trading engine
+- OrderExecutor: Order executor to Binance
+- MarketDataManager: Real-time market data management
+- PositionManager: Open positions management
 """
 
 from .engine import TradingEngine

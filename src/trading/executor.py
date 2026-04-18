@@ -1,13 +1,14 @@
 # src/trading/executor.py
 """
-Ejecutor de órdenes para Fenix Trading Bot.
+Order executor for Fenix Trading Bot.
 
-Este módulo se encarga de:
-- Ejecutar órdenes de mercado en Binance
-- Gestionar SL/TP
-- Manejar errores y reintentos
-- Circuit breaker para protección
+This module is responsible for:
+- Executing market orders on Binance
+- Managing SL/TP
+- Handling errors and retries
+- Circuit breaker for protection
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -24,7 +25,8 @@ logger = logging.getLogger("FenixOrderExecutor")
 
 @dataclass
 class OrderResult:
-    """Resultado de una ejecución de orden."""
+    """Result of an order execution."""
+
     success: bool
     status: str
     order_id: int | None = None
@@ -50,7 +52,7 @@ class OrderResult:
 
 
 class CircuitBreaker:
-    """Circuit breaker para proteger contra errores en cascada."""
+    """Circuit breaker to protect against cascading errors."""
 
     def __init__(
         self,
@@ -66,7 +68,7 @@ class CircuitBreaker:
         self.enabled = enabled
 
     def record_failure(self) -> None:
-        """Registra un fallo."""
+        """Records a failure."""
         if not self.enabled:
             return
         self.failures += 1
@@ -74,25 +76,23 @@ class CircuitBreaker:
 
         if self.failures >= self.failure_threshold:
             self.is_open = True
-            logger.warning(
-                f"🚫 Circuit breaker OPEN after {self.failures} failures"
-            )
+            logger.warning(f"🚫 Circuit breaker OPEN after {self.failures} failures")
 
     def record_success(self) -> None:
-        """Registra éxito y resetea contadores."""
+        """Records success and resets counters."""
         if not self.enabled:
             return
         self.failures = 0
         self.is_open = False
 
     def can_execute(self) -> bool:
-        """Verifica si se puede ejecutar."""
+        """Checks if execution is allowed."""
         if not self.enabled:
             return True
         if not self.is_open:
             return True
 
-        # Verificar si el timeout ha pasado
+        # Check if timeout has passed
         if self.last_failure_time:
             elapsed = (datetime.now(timezone.utc) - self.last_failure_time).total_seconds()
             if elapsed >= self.reset_timeout:
@@ -106,13 +106,13 @@ class CircuitBreaker:
 
 class OrderExecutor:
     """
-    Ejecutor de órdenes de trading.
+    Trading order executor.
 
-    Responsabilidades:
-    - Ejecutar órdenes de mercado
-    - Colocar SL/TP
-    - Manejar reintentos y errores
-    - Formatear precios y cantidades
+    Responsibilities:
+    - Execute market orders
+    - Place SL/TP
+    - Handle retries and errors
+    - Format prices and quantities
     """
 
     def __init__(
@@ -138,17 +138,17 @@ class OrderExecutor:
 
     @property
     def service(self) -> BinanceService:
-        """Lazy loading del servicio de Binance."""
+        """Lazy loading of Binance service."""
         if self._service is None:
             self._service = get_binance_service(testnet=self.testnet)
         return self._service
 
     def format_price(self, price: float) -> str:
-        """Formatea precio según precisión del símbolo."""
+        """Formats price according to symbol precision."""
         return f"{price:.{self.price_precision}f}"
 
     def format_quantity(self, qty: float) -> str:
-        """Formatea cantidad según precisión del símbolo."""
+        """Formats quantity according to symbol precision."""
         return f"{qty:.{self.qty_precision}f}"
 
     async def execute_market_order(
@@ -160,21 +160,21 @@ class OrderExecutor:
         reduce_only: bool = False,
     ) -> OrderResult:
         """
-        Ejecuta una orden de mercado con SL/TP opcionales.
+        Executes a market order with optional SL/TP.
 
         Args:
-            side: BUY o SELL
-            quantity: Cantidad a operar
-            stop_loss: Precio de stop loss
-            take_profit: Precio de take profit
-            reduce_only: Si es orden de reducción de posición
+            side: BUY or SELL
+            quantity: Amount to trade
+            stop_loss: Stop loss price
+            take_profit: Take profit price
+            reduce_only: If order is to reduce position
 
         Returns:
-            OrderResult con el resultado de la ejecución
+            OrderResult with the execution result
         """
         timestamp = datetime.now(timezone.utc).isoformat()
 
-        # Verificar circuit breaker
+        # Check circuit breaker
         if not self.circuit_breaker.can_execute():
             return OrderResult(
                 success=False,
@@ -184,7 +184,7 @@ class OrderExecutor:
             )
 
         try:
-            # Formatear cantidad
+            # Format quantity
             formatted_qty = self.format_quantity(quantity)
             if float(formatted_qty) <= 0:
                 return OrderResult(
@@ -194,7 +194,7 @@ class OrderExecutor:
                     timestamp=timestamp,
                 )
 
-            # Ejecutar orden de mercado
+            # Execute market order
             logger.info(f"Executing MARKET {side} {formatted_qty} {self.symbol}")
 
             response = self.service.place_market_order(
@@ -230,11 +230,9 @@ class OrderExecutor:
             entry_price = float(filled_order.get("avgPrice", 0))
             executed_qty = float(filled_order.get("executedQty", 0))
 
-            logger.info(
-                f"✅ MARKET order FILLED: {side} {executed_qty} @ {entry_price}"
-            )
+            logger.info(f"✅ MARKET order FILLED: {side} {executed_qty} @ {entry_price}")
 
-            # Colocar SL/TP si se proporcionan
+            # Place SL/TP if provided
             sl_order_id = None
             tp_order_id = None
 
@@ -276,7 +274,7 @@ class OrderExecutor:
         max_retries: int = 10,
         delay: float = 0.5,
     ) -> dict[str, Any] | None:
-        """Espera a que una orden sea llenada."""
+        """Waits for an order to be filled."""
         for i in range(max_retries):
             try:
                 order = self.service.get_order(self.symbol, order_id)
@@ -303,7 +301,7 @@ class OrderExecutor:
         stop_loss: float | None = None,
         take_profit: float | None = None,
     ) -> tuple[int | None, int | None]:
-        """Coloca órdenes de SL y TP."""
+        """Places SL and TP orders."""
         # El lado del SL/TP es opuesto al de entrada
         sltp_side = "SELL" if entry_side == "BUY" else "BUY"
         formatted_qty = self.format_quantity(quantity)
@@ -342,7 +340,7 @@ class OrderExecutor:
         return sl_order_id, tp_order_id
 
     async def cancel_order(self, order_id: int) -> bool:
-        """Cancela una orden."""
+        """Cancels an order."""
         try:
             self.service.cancel_order(self.symbol, order_id)
             logger.info(f"Order {order_id} cancelled")
@@ -352,7 +350,7 @@ class OrderExecutor:
             return False
 
     async def cancel_all_orders(self) -> bool:
-        """Cancela todas las órdenes del símbolo."""
+        """Cancels all orders for the symbol."""
         try:
             self.service.cancel_all_open_orders(self.symbol)
             logger.info(f"All orders cancelled for {self.symbol}")
@@ -362,7 +360,7 @@ class OrderExecutor:
             return False
 
     def get_position(self) -> dict[str, Any]:
-        """Obtiene la posición actual."""
+        """Gets the current position."""
         try:
             return self.service.get_position(self.symbol)
         except Exception as e:
@@ -370,7 +368,7 @@ class OrderExecutor:
             return {}
 
     def get_balance(self) -> float | None:
-        """Obtiene el balance en USDT."""
+        """Gets the balance in USDT."""
         try:
             return self.service.get_balance_usdt()
         except Exception as e:
