@@ -492,23 +492,7 @@ def _calculate_and_store_all_indicators() -> None:
                 returns = returns * 10
             am = arch_model(returns, vol='GARCH', p=1, q=1, dist='normal', rescale=False)
             with warnings.catch_warnings():
-                warnings.filterwarnings(
-                    "ignore",
-                    message=".*optimizer returned code.*",
-                )
-                warnings.filterwarnings(
-                    "ignore",
-                    message=".*Positive directional derivative.*",
-                )
-                warnings.filterwarnings(
-                    "ignore",
-                    message=".*Iteration limit reached.*",
-                )
-                if ArchConvergenceWarning is not None:
-                    warnings.filterwarnings(
-                        "ignore",
-                        category=ArchConvergenceWarning,
-                    )
+                warnings.simplefilter("ignore")  # ignore all warnings
                 res = am.fit(disp='off')
             forecast = res.forecast(horizon=1)
             garch_vol = np.sqrt(forecast.variance.values[-1, :][0])
