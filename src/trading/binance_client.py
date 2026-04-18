@@ -418,6 +418,10 @@ class BinanceClient:
             {"symbol": symbol},
             signed=True,
         )
+        
+    def is_connected(self) -> bool:
+        """Vérifie si le client est connecté."""
+        return self._connected
 
 
 # === Función de utilidad ===
