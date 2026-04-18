@@ -29,7 +29,7 @@ class AutoEvaluator:
         
         # Ensure client is connected (for REST calls it might not be strictly needed but good practice)
         # BinanceClient might need connect() for async session
-        # await self.client.connect() 
+        await self.client.connect() 
         
         while self._running:
             try:
@@ -40,7 +40,7 @@ class AutoEvaluator:
 
     async def stop(self):
         self._running = False
-        # await self.client.close()
+        await self.client.close()
 
     async def evaluate_pending_entries(self):
         """Check pending entries and evaluate them if horizon has passed."""
@@ -77,6 +77,10 @@ class AutoEvaluator:
 
     async def evaluate_entry(self, entry: ReasoningEntry, start_time: datetime, end_time: datetime):
         """Compare prediction with actual price movement."""
+        
+        if not self.client.is_connected():
+            logger.warning("Client not connected, skipping evaluation.")
+            return
         
         # Fetch price at start and end
         # We use get_klines to find the closest candles
