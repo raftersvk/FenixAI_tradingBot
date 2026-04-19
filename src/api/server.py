@@ -1472,6 +1472,7 @@ app = socketio.ASGIApp(sio, app)
 
 if __name__ == "__main__":
     import uvicorn
+    from src.config.logging_config import get_uvicorn_log_config
 
     allow_expose_api = os.getenv("ALLOW_EXPOSE_API", "false").lower() == "true"
     host = "0.0.0.0" if allow_expose_api else "127.0.0.1"
@@ -1484,5 +1485,5 @@ if __name__ == "__main__":
         host=host,
         port=8000,
         reload=True,
-        log_config=None,
+        log_config=get_uvicorn_log_config(),
     )

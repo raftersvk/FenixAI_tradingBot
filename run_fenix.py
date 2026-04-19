@@ -196,6 +196,7 @@ async def main():
     if args.api:
         logger.info("🚀 Starting API server (Frontend Backend)...")
         import uvicorn
+        from src.config.logging_config import get_uvicorn_log_config
 
         # Importar app_socketio desde el nuevo módulo server
         # Nota: uvicorn necesita el import string "src.api.server:app_socketio"
@@ -204,7 +205,7 @@ async def main():
             host=args.host,
             port=8000,
             reload=False,
-            log_config=None,
+            log_config=get_uvicorn_log_config(),
         )
         return 0
 
@@ -358,7 +359,7 @@ if __name__ == "__main__":
             host=host,
             port=8000,
             reload=False,
-            log_config=None,
+            log_config=log_config,
         )
         sys.exit(0)
 
