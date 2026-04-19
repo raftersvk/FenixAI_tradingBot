@@ -69,3 +69,4 @@ langchain_ollama
 TA-Lib
 kaleido
 mplfinance
+lightweight-charts
