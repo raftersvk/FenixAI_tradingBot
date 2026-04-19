@@ -10,7 +10,7 @@ FROM python:3.13-slim AS builder
 
 WORKDIR /app
 
-# Install build dependencies
+# Install build dependencies (rarely changes - cached)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
@@ -32,31 +32,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy dependency files first for caching
+# ========== Copy dependency files first (for Docker layer caching) ==========
+# These files change rarely - Docker will cache this layer
 COPY pyproject.toml ./
+COPY requirements.txt ./
 COPY README.md ./
 COPY LICENSE ./
-COPY src/ ./src/
 
-# Install Python dependencies
+# Install Python dependencies from requirements.txt
+# This layer is cached until requirements.txt changes
 RUN pip install --upgrade pip wheel setuptools && \
-    pip install --no-cache-dir ".[vision,monitoring]" && \
-    pip install --no-cache-dir langgraph langchain_ollama TA-Lib
+    pip install -r requirements.txt
 
-# Install additional runtime dependencies (some missing from pyproject.toml)
-RUN pip install --no-cache-dir \
-    uvicorn[standard] \
-    gunicorn \
-    prometheus-client \
-    aiosqlite \
-    python-multipart \
-    python-socketio \
-    python-jose[cryptography] \
-    passlib[bcrypt] \
-    apscheduler \
-    beautifulsoup4 \
-    feedparser \
-    scipy
+# ========== NOW copy source code (after dependencies are installed) ==========
+# This layer will rebuild quickly when src/ changes (no pip install needed)
+COPY src/ ./src/
 
 # ==============================================================================
 # Stage 2: Runtime - Minimal production image
