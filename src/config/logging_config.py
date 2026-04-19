@@ -144,12 +144,20 @@ def build_logging_config(
         lib_handler_names = root_handler_names.copy()
         loggers.update(
             {
-                "aiosqlite": {"handlers": lib_handler_names, "level": "TRACE", "propagate": False},
-                "httpcore": {"handlers": lib_handler_names, "level": "TRACE", "propagate": False},
-                "httpx": {"handlers": lib_handler_names, "level": "TRACE", "propagate": False},
+                "aiosqlite": {
+                    "handlers": lib_handler_names,
+                    "level": TRACE_LEVEL,
+                    "propagate": False,
+                },
+                "httpcore": {
+                    "handlers": lib_handler_names,
+                    "level": TRACE_LEVEL,
+                    "propagate": False,
+                },
+                "httpx": {"handlers": lib_handler_names, "level": TRACE_LEVEL, "propagate": False},
                 "websockets.client": {
                     "handlers": lib_handler_names,
-                    "level": "TRACE",
+                    "level": TRACE_LEVEL,
                     "propagate": False,
                 },
             }
