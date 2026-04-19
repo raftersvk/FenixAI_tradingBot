@@ -17,6 +17,18 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+# Override uvicorn logging config BEFORE uvicorn configures its loggers
+from src.config.logging_config import get_uvicorn_log_config
+
+try:
+    import uvicorn.config
+
+    uvicorn.config.LOGGING_CONFIG = get_uvicorn_log_config(websocket_debug=True)
+except ImportError:
+    pass
+
+logger = logging.getLogger("Fenix")
+
 from src.trading.engine import TradingEngine
 from src.trading.binance_client import BinanceClient
 from src.config.config_loader import APP_CONFIG
@@ -116,56 +128,6 @@ _ORDERS: List[dict] = []
 _POSITIONS: List[dict] = []
 _TRADE_HISTORY: List[dict] = []
 _AGENT_OUTPUTS: List[dict] = []
-
-# Override uvicorn logging config to include timestamps in logs
-try:
-    import uvicorn
-
-    uvicorn.config.LOGGING_CONFIG = {
-        "version": 1,
-        "disable_existing_loggers": False,
-        "formatters": {
-            "default": {
-                "()": "uvicorn.logging.DefaultFormatter",
-                "fmt": "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-                "datefmt": "%Y-%m-%d %H:%M:%S",
-            },
-            "access": {
-                "()": "uvicorn.logging.AccessFormatter",
-                "fmt": "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-                "datefmt": "%Y-%m-%d %H:%M:%S",
-            },
-        },
-        "handlers": {
-            "default": {
-                "formatter": "default",
-                "class": "logging.StreamHandler",
-                "stream": "ext://sys.stderr",
-            },
-            "access": {
-                "formatter": "access",
-                "class": "logging.StreamHandler",
-                "stream": "ext://sys.stderr",
-            },
-        },
-        "loggers": {
-            "uvicorn": {"handlers": ["default"], "level": "INFO"},
-            "uvicorn.error": {"level": "INFO"},
-            "uvicorn.access": {"handlers": ["access"], "level": "INFO", "propagate": False},
-        },
-    }
-except ImportError:
-    pass
-
-# Configure logging if not already configured (when run via uvicorn directly)
-if not logging.getLogger().hasHandlers():
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-
-logger = logging.getLogger("Fenix")
 
 # Global Engine Instance
 engine: TradingEngine | None = None

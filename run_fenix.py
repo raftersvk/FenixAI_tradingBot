@@ -15,64 +15,20 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import signal
 import sys
 from datetime import datetime
 from pathlib import Path
 
-# Create logs directory if it doesn't exist
+# Centralized logging utilities
+from src.config.logging_config import build_logging_config, setup_logging, get_logger
+
+# Create logs directory
 Path("logs").mkdir(exist_ok=True)
+log_file = f"logs/fenix_{datetime.now():%Y%m%d_%H%M%S}.log"
 
-# Configure logging
-LOG_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
-DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
-
-logging.basicConfig(
-    level=logging.INFO,
-    format=LOG_FORMAT,
-    datefmt=DATE_FORMAT,
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(f"logs/fenix_{datetime.now():%Y%m%d_%H%M%S}.log"),
-    ],
-)
-
-# Uvicorn log configuration with timestamps
-UVICORN_LOG_CONFIG = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "default": {
-            "()": "uvicorn.logging.DefaultFormatter",
-            "fmt": LOG_FORMAT,
-            "datefmt": DATE_FORMAT,
-        },
-        "access": {
-            "()": "uvicorn.logging.AccessFormatter",
-            "fmt": LOG_FORMAT,
-            "datefmt": DATE_FORMAT,
-        },
-    },
-    "handlers": {
-        "default": {
-            "formatter": "default",
-            "class": "logging.StreamHandler",
-            "stream": "ext://sys.stderr",
-        },
-        "access": {
-            "formatter": "access",
-            "class": "logging.StreamHandler",
-            "stream": "ext://sys.stderr",
-        },
-    },
-    "loggers": {
-        "uvicorn": {"handlers": ["default"], "level": "INFO"},
-        "uvicorn.error": {"level": "INFO"},
-        "uvicorn.access": {"handlers": ["access"], "level": "INFO", "propagate": False},
-    },
-}
-
-logger = logging.getLogger("Fenix")
+logger = None  # will be set after configuration
 
 
 def parse_args():
@@ -248,7 +204,7 @@ async def main():
             host=args.host,
             port=8000,
             reload=False,
-            log_config=UVICORN_LOG_CONFIG,
+            log_config=None,
         )
         return 0
 
@@ -383,19 +339,31 @@ if __name__ == "__main__":
         if host == "0.0.0.0":
             allow_expose = os.getenv("ALLOW_EXPOSE_API", "false").lower() == "true"
             if not allow_expose:
-                logger.warning(
-                    "API host set to 0.0.0.0; to expose the API explicitly set ALLOW_EXPOSE_API=true"
+                print(
+                    "Warning: API host set to 0.0.0.0; to expose the API explicitly set ALLOW_EXPOSE_API=true"
                 )
-                logger.info("Binding to 127.0.0.1 instead for safety")
+                print("Binding to 127.0.0.1 instead for safety")
                 host = "127.0.0.1"
+
+        # Build unified logging configuration (includes uvicorn, websocket debug)
+        log_config = build_logging_config(
+            level=logging.INFO,
+            log_file=log_file,
+            websocket_debug=True,
+            include_uvicorn=True,
+        )
         uvicorn.run(
             "src.api.server:app_socketio",
             host=host,
             port=8000,
             reload=False,
-            log_config=UVICORN_LOG_CONFIG,
+            log_config=log_config,
         )
         sys.exit(0)
+
+    # CLI mode (non-API): configure logging locally
+    setup_logging(level=logging.INFO, log_file=log_file, websocket_debug=True)
+    logger = get_logger("Fenix")
 
     try:
         # Pass args to main (we need to modify main signature or use global/re-parse)
