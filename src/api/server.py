@@ -17,9 +17,16 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from src.config.logging_config import configure_root_logger, get_uvicorn_log_config
+from src.config.logging_config import configure_root_logger
 
 configure_root_logger(level=logging.INFO, websocket_debug=True)
+
+try:
+    import uvicorn.config
+
+    uvicorn.config.LOGGING_CONFIG = {}
+except ImportError:
+    pass
 
 logger = logging.getLogger("Fenix")
 
