@@ -17,15 +17,9 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-# Override uvicorn logging config BEFORE uvicorn configures its loggers
-from src.config.logging_config import get_uvicorn_log_config
+from src.config.logging_config import configure_root_logger, get_uvicorn_log_config
 
-try:
-    import uvicorn.config
-
-    uvicorn.config.LOGGING_CONFIG = get_uvicorn_log_config(websocket_debug=True)
-except ImportError:
-    pass
+configure_root_logger(level=logging.INFO, websocket_debug=True)
 
 logger = logging.getLogger("Fenix")
 
@@ -1475,4 +1469,10 @@ if __name__ == "__main__":
         logger.warning("ALLOW_EXPOSE_API is set: the API will bind to 0.0.0.0 (external exposure)")
     else:
         logger.info("Binding to 127.0.0.1 by default. Set ALLOW_EXPOSE_API=true to bind to 0.0.0.0")
-    uvicorn.run("src.api.server:app", host=host, port=8000, reload=True)
+    uvicorn.run(
+        "src.api.server:app",
+        host=host,
+        port=8000,
+        reload=True,
+        log_config=None,
+    )

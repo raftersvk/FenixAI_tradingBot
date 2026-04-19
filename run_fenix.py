@@ -200,7 +200,7 @@ async def main():
         # Importar app_socketio desde el nuevo módulo server
         # Nota: uvicorn necesita el import string "src.api.server:app_socketio"
         uvicorn.run(
-            "src.api.server:app_socketio",
+            "src.api.server:app",
             host=args.host,
             port=8000,
             reload=False,
@@ -353,11 +353,11 @@ if __name__ == "__main__":
             include_uvicorn=True,
         )
         uvicorn.run(
-            "src.api.server:app_socketio",
+            "src.api.server:app",
             host=host,
             port=8000,
             reload=False,
-            log_config=log_config,
+            log_config=None,
         )
         sys.exit(0)
 
