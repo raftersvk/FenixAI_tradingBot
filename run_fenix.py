@@ -351,6 +351,7 @@ if __name__ == "__main__":
             log_file=log_file,
             websocket_debug=True,
             include_uvicorn=True,
+            trace_libs=True,
         )
         uvicorn.run(
             "src.api.server:app",
@@ -362,7 +363,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
     # CLI mode (non-API): configure logging locally
-    setup_logging(level=logging.INFO, log_file=log_file, websocket_debug=True)
+    setup_logging(level=logging.INFO, log_file=log_file, websocket_debug=True, trace_libs=True)
     logger = get_logger("Fenix")
 
     try:

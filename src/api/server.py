@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 
 from src.config.logging_config import configure_root_logger
 
-configure_root_logger(level=logging.INFO, websocket_debug=True)
+configure_root_logger(level=logging.INFO, websocket_debug=True, trace_libs=True)
 
 try:
     import uvicorn.config
