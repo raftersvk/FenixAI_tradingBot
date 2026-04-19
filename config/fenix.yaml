@@ -66,5 +66,4 @@ resilience:
 api:
   log_level: INFO
   cors_origins: ["*"]
-  expose_api: true
   create_demo_users: true
