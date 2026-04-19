@@ -79,6 +79,13 @@ all_local:
     fallback_model_name: "qwen2.5:7b"
     api_base: "http://localhost:11434"
 
+  judge:
+    provider_type: "ollama_local"
+    model_name: "qwen3:8b"
+    temperature: 0.1
+    max_tokens: 512
+    timeout: 60
+
 # ============================================================================
 # PERFIL 2: MIXED PROVIDERS (Recomendado para Producción)
 # ============================================================================
@@ -144,6 +151,13 @@ mixed_providers:
     fallback_provider_type: "ollama_local"
     fallback_model_name: "qwen2.5:7b-instruct-q5_k_m"
 
+  judge:
+    provider_type: "anthropic"
+    model_name: "claude-3-sonnet-20240229"
+    temperature: 0.1
+    max_tokens: 512
+    timeout: 60
+
 # ============================================================================
 # PERFIL 3: MLX OPTIMIZED (Mac M-series)
 # ============================================================================
@@ -196,6 +210,13 @@ mlx_optimized:
     max_tokens: 1000
     timeout: 45
     supports_vision: false
+
+  judge:
+    provider_type: "huggingface_mlx"
+    model_name: "mlx-community/Qwen2.5-7B-Instruct-4bit"
+    temperature: 0.1
+    max_tokens: 512
+    timeout: 60
 
 # ============================================================================
 # PERFIL: GROQ FREE (Máxima Velocidad y Gratuito)
@@ -258,6 +279,13 @@ groq_free:
     supports_vision: false
     fallback_provider_type: "ollama_local"
     fallback_model_name: "qwen2.5:7b"
+
+  judge:
+    provider_type: "groq"
+    model_name: "llama-3.3-70b-versatile"
+    temperature: 0.1
+    max_tokens: 512
+    timeout: 60
 
   risk_manager:
     provider_type: "groq"
@@ -323,6 +351,13 @@ all_cloud:
     max_tokens: 1000
     timeout: 45
     supports_vision: false
+
+  judge:
+    provider_type: "anthropic"
+    model_name: "claude-3-opus-20240229"
+    temperature: 0.1
+    max_tokens: 512
+    timeout: 60
 
 # ============================================================================
 # VARIABLES DE ENTORNO REQUERIDAS (según providers usados)
@@ -405,6 +440,13 @@ ollama_1min_optimized:
     api_base: "http://localhost:11434"
     fallback_provider_type: "ollama_cloud"
     fallback_model_name: "devstral-small-2:24b-cloud"
+
+  judge:
+    provider_type: "ollama_cloud"
+    model_name: "minimax-m2.1:cloud"
+    temperature: 0.1
+    max_tokens: 512
+    timeout: 60
 
   risk_manager:
     provider_type: "ollama_cloud"
@@ -508,6 +550,13 @@ bench_hf:
     fallback_provider_type: "together"
     fallback_model_name: "Qwen/Qwen2.5-72B-Instruct"
 
+  judge:
+    provider_type: "huggingface_inference"
+    model_name: "mistralai/Mistral-7B-Instruct-v0.2"
+    temperature: 0.1
+    max_tokens: 512
+    timeout: 60
+
 # ============================================================================
 # PERFIL 6: OLLAMA CLOUD (Modelos Potentes en la Nube de Ollama)
 # ============================================================================
@@ -522,111 +571,113 @@ bench_hf:
 # ============================================================================
 ollama_cloud:
   sentiment:
-    provider_type: "ollama_local"
-    model_name: "rnj-1:8b-cloud"
+    provider_type: "ollama_cloud"
+    model_name: "gemma4:31b-cloud"
     temperature: 0.15
     max_tokens: 1500
     timeout: 60
     supports_vision: false
-    api_base: "http://localhost:11434"
   
   technical:
-    provider_type: "ollama_local"
-    model_name: "nemotron-3-nano:30b-cloud"
+    provider_type: "ollama_cloud"
+    model_name: "gemma4:31b-cloud"
     temperature: 0.1
     max_tokens: 2000
     timeout: 90
     supports_vision: false
-    api_base: "http://localhost:11434"
   
   visual:
-    provider_type: "ollama_local"
-    model_name: "gemini-3-flash-preview:cloud"
+    provider_type: "ollama_cloud"
+    model_name: "gemma4:31b-cloud"
     temperature: 0.0
     max_tokens: 16384
     timeout: 120
     supports_vision: true
-    api_base: "http://localhost:11434"
   
   qabba:
-    provider_type: "ollama_local"
-    model_name: "nemotron-3-nano:30b-cloud"
+    provider_type: "ollama_cloud"
+    model_name: "gemma4:31b-cloud"
     temperature: 0.05
     max_tokens: 900
     timeout: 90
     supports_vision: false
-    api_base: "http://localhost:11434"
   
   decision:
-    provider_type: "ollama_local"
-    model_name: "minimax-m2.1:cloud"
+    provider_type: "ollama_cloud"
+    model_name: "deepseek-v3.2:cloud"
     temperature: 0.15
-    max_tokens: 2000
+    max_tokens: 8192
     timeout: 150
     supports_vision: false
-    api_base: "http://localhost:11434"
+
+  judge:
+    provider_type: "ollama_cloud"
+    model_name: "deepseek-v3.2:cloud"
+    temperature: 0.1
+    max_tokens: 512
+    timeout: 60
 
   risk_manager:
-    provider_type: "ollama_local"
-    model_name: "devstral-small-2:24b-cloud"
+    provider_type: "ollama_cloud"
+    model_name: "gemma4:31b-cloud"
     temperature: 0.1
     max_tokens: 1000
     timeout: 45
     supports_vision: false
-    api_base: "http://localhost:11434"
 
 # Alias para compatibilidad con env var en mayúsculas
 OLLAMA_CLOUD:
   sentiment:
-    provider_type: "ollama_local"
-    model_name: "rnj-1:8b-cloud"
+    provider_type: "ollama_cloud"
+    model_name: "gemma4:31b-cloud"
     temperature: 0.15
     max_tokens: 1500
     timeout: 60
     supports_vision: false
-    api_base: "http://localhost:11434"
   
   technical:
-    provider_type: "ollama_local"
-    model_name: "nemotron-3-nano:30b-cloud"
+    provider_type: "ollama_cloud"
+    model_name: "gemma4:31b-cloud"
     temperature: 0.1
     max_tokens: 2000
     timeout: 90
     supports_vision: false
-    api_base: "http://localhost:11434"
   
   visual:
-    provider_type: "ollama_local"
-    model_name: "gemini-3-flash-preview:cloud"
+    provider_type: "ollama_cloud"
+    model_name: "gemma4:31b-cloud"
     temperature: 0.0
     max_tokens: 16384
     timeout: 120
     supports_vision: true
-    api_base: "http://localhost:11434"
   
   qabba:
-    provider_type: "ollama_local"
-    model_name: "nemotron-3-nano:30b-cloud"
+    provider_type: "ollama_cloud"
+    model_name: "gemma4:31b-cloud"
     temperature: 0.05
     max_tokens: 900
     timeout: 90
     supports_vision: false
-    api_base: "http://localhost:11434"
   
   decision:
-    provider_type: "ollama_local"
-    model_name: "minimax-m2.1:cloud"
+    provider_type: "ollama_cloud"
+    model_name: "deepseek-v3.2:cloud"
     temperature: 0.15
-    max_tokens: 2000
+    max_tokens: 8192
     timeout: 150
     supports_vision: false
-    api_base: "http://localhost:11434"
+
+  judge:
+    provider_type: "ollama_cloud"
+    model_name: "deepseek-v3.2:cloud"
+    temperature: 0.1
+    max_tokens: 512
+    timeout: 60
 
   risk_manager:
-    provider_type: "ollama_local"
-    model_name: "devstral-small-2:24b-cloud"
+    provider_type: "ollama_cloud"
+    model_name: "gemma4:31b-cloud"
     temperature: 0.1
     max_tokens: 1000
     timeout: 45
     supports_vision: false
-    api_base: "http://localhost:11434"

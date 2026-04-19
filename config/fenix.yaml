@@ -2,10 +2,10 @@
 # ================================
 
 trading:
-  symbol: BTCUSDT
-  timeframe: 15m
-  min_klines_to_start: 20
-  analysis_interval_seconds: 60
+  symbol: BTCUSDC
+  timeframe: 30m
+  min_klines_to_start: 500
+  analysis_interval_seconds: 900
   max_risk_per_trade: 0.02
   max_total_exposure: 0.05
   max_concurrent_trades: 3
@@ -26,20 +26,20 @@ agents:
   min_confidence_to_trade: MEDIUM
 
 llm:
-  default_provider: ollama_local
-  default_model: ministral-3:14b-cloud
+  default_provider: ollama_cloud
+  default_model: gemma4:31b-cloud
   temperature: 0.1
-  max_tokens: 500
+  max_tokens: 8192
   timeout_seconds: 30
   fallback_provider: ollama_local
-  fallback_model: kimi-k2.5:cloud
+  fallback_model: hf.co/unsloth/Ministral-3-8B-Reasoning-2512-GGUF:Q4_K_M
 
 binance:
   testnet: true  # IMPORTANTE: Cambiar a false para trading real
   recv_window: 5000
   min_notional: 5.0
   max_requests_per_minute: 1200
-  max_orders_per_second: 10
+  max_orders_per_second: 2
 
 logging:
   level: INFO
