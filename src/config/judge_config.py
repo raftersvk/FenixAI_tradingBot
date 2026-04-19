@@ -32,10 +32,33 @@ class JudgeModelConfig:
 
 
 def get_judge_model_config() -> JudgeModelConfig:
-    """Read judge configuration from environment variables."""
+    """Read judge configuration from LLM provider config (YAML) or environment variables."""
 
-    provider = os.getenv("FENIX_JUDGE_PROVIDER", "ollama").strip() or "ollama"
-    model_id = os.getenv("FENIX_JUDGE_MODEL", "nemotron-3-nano:30b-cloud").strip() or "nemotron-3-nano:30b-cloud"
+    # Try using LLMProviderLoader first (YAML configuration)
+    try:
+        from src.config.llm_provider_loader import get_provider_loader
+
+        loader = get_provider_loader()
+        cfg = loader.get_config()
+        if cfg and cfg.judge:
+            agent_cfg = cfg.judge
+            system_prompt = os.getenv("FENIX_JUDGE_SYSTEM_PROMPT", JudgeModelConfig.system_prompt)
+            return JudgeModelConfig(
+                provider=agent_cfg.provider_type,
+                model_id=agent_cfg.model_name,
+                temperature=agent_cfg.temperature,
+                max_tokens=agent_cfg.max_tokens,
+                system_prompt=system_prompt,
+            )
+    except Exception:
+        pass
+
+    # Fallback to environment variables
+    provider = os.getenv("FENIX_JUDGE_PROVIDER", "ollama_local").strip() or "ollama_local"
+    model_id = (
+        os.getenv("FENIX_JUDGE_MODEL", "nemotron-3-nano:30b-cloud").strip()
+        or "nemotron-3-nano:30b-cloud"
+    )
     temperature = float(os.getenv("FENIX_JUDGE_TEMPERATURE", "0.1"))
     max_tokens = int(os.getenv("FENIX_JUDGE_MAX_TOKENS", "512"))
     system_prompt = os.getenv("FENIX_JUDGE_SYSTEM_PROMPT")

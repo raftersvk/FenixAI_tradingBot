@@ -3,13 +3,15 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from src.config.judge_config import JudgeModelConfig, get_judge_model_config
+from src.inference.llm_factory import LLMFactory
 from src.inference.model_id_normalizer import normalize_model_id_for_provider
-from src.inference.provider_registry import registry, setup_default_providers
-from src.inference.providers.base import GenerationParams, ProviderError
+from config.llm_provider_config import AgentProviderConfig
+from langchain_core.messages import SystemMessage, HumanMessage
 
 logger = logging.getLogger(__name__)
 
@@ -60,58 +62,54 @@ class JudgeVerdict:
 
 
 class ReasoningLLMJudge:
-    """LLM-powered judge that scores reasoning traces via existing providers."""
+    """LLM-powered judge that scores reasoning traces via LangChain LLMs."""
 
     def __init__(self, config: Optional[JudgeModelConfig] = None):
         self.config = config or get_judge_model_config()
-        setup_default_providers()
+        # Normalize model ID once
+        self.model_id = normalize_model_id_for_provider(self.config.model_id, self.config.provider)
+        # Map 'ollama' to 'ollama_local' for compatibility with AgentProviderConfig
+        provider_type = self.config.provider
+        if provider_type == "ollama":
+            provider_type = "ollama_local"
+        # Build a minimal AgentProviderConfig for the judge
+        agent_config = AgentProviderConfig(
+            provider_type=provider_type,
+            model_name=self.model_id,
+            temperature=self.config.temperature,
+            max_tokens=self.config.max_tokens,
+        )
+        # Create LLM via LLMFactory
+        factory = LLMFactory()
+        try:
+            self._llm = factory.create_llm_from_config(agent_config)
+        except Exception as exc:
+            logger.debug("ReasoningLLMJudge: failed to create LLM: %s", exc)
+            self._llm = None
 
     def evaluate(self, payload: ReasoningJudgePayload) -> Optional[JudgeVerdict]:
-        provider = registry.get(self.config.provider)
-        if not provider:
-            logger.debug(
-                "ReasoningLLMJudge: provider '%s' not registered, skipping",
-                self.config.provider,
-            )
+        if self._llm is None:
+            logger.debug("ReasoningLLMJudge: LLM not available, skipping")
             return None
-
-        normalized_model_id = normalize_model_id_for_provider(
-            self.config.model_id, self.config.provider
-        )
 
         prompt = self._build_prompt(payload)
-        params = GenerationParams(
-            max_tokens=self.config.max_tokens,
-            temperature=self.config.temperature,
-            extra={"system": self.config.system_prompt},
-        )
+        messages = []
+        if self.config.system_prompt:
+            messages.append(SystemMessage(content=self.config.system_prompt))
+        messages.append(HumanMessage(content=prompt))
 
         try:
-            response = provider.generate_text(normalized_model_id or "", prompt, params)
-        except ProviderError as exc:
-            logger.debug("ReasoningLLMJudge provider error: %s", exc)
-            # If rate-limited, attempt to find a fallback provider
-            if exc.is_rate_limit:
-                for name, p in registry.available().items():
-                    if name == self.config.provider:
-                        continue
-                    try:
-                        logger.debug("Attempting fallback judge provider: %s", name)
-                        alt_model_id = normalize_model_id_for_provider(self.config.model_id, name)
-                        response = p.generate_text(alt_model_id or "", prompt, params)
-                        break
-                    except ProviderError as e2:
-                        logger.debug("Fallback provider %s error: %s", name, e2)
-                        continue
-                else:
-                    return None
+            response = self._llm.invoke(messages)
+            # Extract text content
+            if hasattr(response, "content"):
+                text = response.content
             else:
-                return None
-        except Exception as exc:  # pragma: no cover - safety net
-            logger.debug("ReasoningLLMJudge unexpected error: %s", exc)
+                text = str(response)
+            text = text.strip()
+        except Exception as exc:
+            logger.debug("ReasoningLLMJudge LLM error: %s", exc)
             return None
 
-        text = (response.get("text") or "").strip()
         parsed = self._parse_response(text)
         if not parsed:
             return None
@@ -184,13 +182,13 @@ class ReasoningLLMJudge:
     def _parse_response(self, text: str) -> Optional[Dict[str, Any]]:
         if not text:
             return None
-        
+
         # First try direct parse
         try:
             return json.loads(text)
         except json.JSONDecodeError:
             pass
-        
+
         # Strip thinking markers if present (e.g., "Thinking...\n...done thinking.\n")
         clean_text = text
         if "...done thinking" in text:
@@ -199,35 +197,36 @@ class ReasoningLLMJudge:
                 clean_text = parts[-1].strip()
                 if clean_text.startswith("."):
                     clean_text = clean_text[1:].strip()
-        
+
         # Try to find JSON in code blocks first (```json ... ```)
         import re
-        json_block_match = re.search(r'```json\s*\n?(.*?)\n?```', clean_text, re.DOTALL)
+
+        json_block_match = re.search(r"```json\s*\n?(.*?)\n?```", clean_text, re.DOTALL)
         if json_block_match:
             try:
                 return json.loads(json_block_match.group(1).strip())
             except json.JSONDecodeError:
                 pass
-        
+
         # Find all potential JSON objects by matching balanced braces
         def find_json_objects(s: str) -> list:
             objects = []
             depth = 0
             start = None
             for i, char in enumerate(s):
-                if char == '{':
+                if char == "{":
                     if depth == 0:
                         start = i
                     depth += 1
-                elif char == '}':
+                elif char == "}":
                     depth -= 1
                     if depth == 0 and start is not None:
-                        objects.append(s[start:i+1])
+                        objects.append(s[start : i + 1])
                         start = None
             return objects
-        
+
         json_objects = find_json_objects(clean_text)
-        
+
         # Try parsing from last to first (most recent JSON is likely the answer)
         for obj_str in reversed(json_objects):
             try:
@@ -237,7 +236,7 @@ class ReasoningLLMJudge:
                     return parsed
             except json.JSONDecodeError:
                 continue
-        
+
         # Fallback: try any valid JSON object
         for obj_str in reversed(json_objects):
             try:
@@ -246,7 +245,7 @@ class ReasoningLLMJudge:
                     return parsed
             except json.JSONDecodeError:
                 continue
-        
+
         logger.debug("ReasoningLLMJudge: no valid JSON found in response.")
         return None
 
