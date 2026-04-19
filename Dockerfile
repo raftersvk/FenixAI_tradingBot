@@ -60,8 +60,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl3 \
     ca-certificates \
     curl \
+    wget \
+    gnupg \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -m -u 1000 fenix
+
+# Install Chromium for Kaleido (Plotly chart export)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy virtual environment from builder
 COPY --from=builder /opt/venv /opt/venv
@@ -70,7 +77,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Set Python environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    CHROMIUM_PATH=/usr/bin/chromium
 
 # Copy application code
 COPY --chown=fenix:fenix src/ ./src/
