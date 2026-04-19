@@ -62,3 +62,9 @@ resilience:
   max_retry_delay: 60.0
   circuit_breaker_failure_threshold: 5
   circuit_breaker_recovery_timeout: 30.0
+
+api:
+  log_level: INFO
+  cors_origins: ["*"]
+  expose_api: true
+  create_demo_users: true

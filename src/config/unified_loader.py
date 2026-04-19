@@ -6,7 +6,7 @@ including trading settings, LLM providers, system config, and environment secret
 
 Usage:
     from src.config.unified_loader import load_config, get_config
-    
+
     config = get_config()  # Singleton access
 """
 
@@ -32,6 +32,7 @@ SRC_CONFIG_DIR = Path(__file__).parent
 @dataclass
 class TradingConfig:
     """Trading configuration."""
+
     symbol: str = "BTCUSDT"
     timeframe: str = "15m"
     min_klines_to_start: int = 20
@@ -47,6 +48,7 @@ class TradingConfig:
 @dataclass
 class AgentsConfig:
     """Agent configuration."""
+
     enable_technical: bool = True
     enable_qabba: bool = True
     enable_visual: bool = True
@@ -62,6 +64,7 @@ class AgentsConfig:
 @dataclass
 class LLMConfig:
     """LLM configuration."""
+
     default_provider: str = "ollama_local"
     default_model: str = "qwen2.5:7b"
     temperature: float = 0.1
@@ -74,6 +77,7 @@ class LLMConfig:
 @dataclass
 class BinanceConfig:
     """Binance configuration."""
+
     testnet: bool = True
     recv_window: int = 5000
     min_notional: float = 5.0
@@ -84,9 +88,10 @@ class BinanceConfig:
     api_secret: Optional[str] = field(default_factory=lambda: os.getenv("BINANCE_API_SECRET"))
 
 
-@dataclass  
+@dataclass
 class MonitoringConfig:
     """Monitoring configuration."""
+
     enable_metrics: bool = True
     metrics_port: int = 9090
     health_check_interval: int = 300
@@ -99,6 +104,7 @@ class MonitoringConfig:
 @dataclass
 class LoggingConfig:
     """Logging configuration."""
+
     level: str = "INFO"
     format: str = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
     log_to_file: bool = True
@@ -109,6 +115,7 @@ class LoggingConfig:
 @dataclass
 class ResilienceConfig:
     """Resilience/retry configuration."""
+
     max_retries: int = 3
     base_retry_delay: float = 1.0
     max_retry_delay: float = 60.0
@@ -119,15 +126,29 @@ class ResilienceConfig:
 @dataclass
 class SecretsConfig:
     """Secrets loaded from environment variables."""
+
     jwt_secret: Optional[str] = field(default_factory=lambda: os.getenv("JWT_SECRET"))
     openai_api_key: Optional[str] = field(default_factory=lambda: os.getenv("OPENAI_API_KEY"))
     anthropic_api_key: Optional[str] = field(default_factory=lambda: os.getenv("ANTHROPIC_API_KEY"))
-    ollama_host: str = field(default_factory=lambda: os.getenv("OLLAMA_HOST", "http://localhost:11434"))
+    ollama_host: str = field(
+        default_factory=lambda: os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    )
+
+
+@dataclass
+class APIConfig:
+    """API server configuration."""
+
+    log_level: str = "INFO"
+    cors_origins: list[str] = field(default_factory=lambda: ["*"])
+    expose_api: bool = False
+    create_demo_users: bool = False
 
 
 @dataclass
 class FenixConfig:
     """Unified FenixAI configuration."""
+
     trading: TradingConfig = field(default_factory=TradingConfig)
     agents: AgentsConfig = field(default_factory=AgentsConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
@@ -135,6 +156,7 @@ class FenixConfig:
     monitoring: MonitoringConfig = field(default_factory=MonitoringConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     resilience: ResilienceConfig = field(default_factory=ResilienceConfig)
+    api: APIConfig = field(default_factory=APIConfig)
     secrets: SecretsConfig = field(default_factory=SecretsConfig)
 
 
@@ -142,7 +164,7 @@ def _load_yaml_file(path: Path) -> dict:
     """Load a YAML file safely."""
     try:
         if path.exists():
-            with open(path, 'r') as f:
+            with open(path, "r") as f:
                 return yaml.safe_load(f) or {}
     except Exception as e:
         logger.warning(f"Failed to load {path}: {e}")
@@ -152,9 +174,10 @@ def _load_yaml_file(path: Path) -> dict:
 def _dict_to_dataclass(data: dict, cls: type) -> Any:
     """Convert dictionary to dataclass, ignoring unknown fields."""
     import dataclasses
+
     if not dataclasses.is_dataclass(cls):
         return data
-    
+
     fields = {f.name for f in dataclasses.fields(cls)}
     filtered = {k: v for k, v in data.items() if k in fields}
     return cls(**filtered)
@@ -163,24 +186,24 @@ def _dict_to_dataclass(data: dict, cls: type) -> Any:
 def load_config(config_path: Optional[Path] = None) -> FenixConfig:
     """
     Load unified configuration from YAML files and environment variables.
-    
+
     Priority (highest to lowest):
     1. Environment variables (for secrets)
     2. fenix.yaml (main config)
     3. Default values
-    
+
     Args:
         config_path: Optional path to fenix.yaml. Defaults to config/fenix.yaml
-        
+
     Returns:
         FenixConfig with all settings loaded
     """
     # Load main config file
     if config_path is None:
         config_path = CONFIG_DIR / "fenix.yaml"
-    
+
     raw_config = _load_yaml_file(config_path)
-    
+
     # Build configuration from file + defaults
     config = FenixConfig(
         trading=_dict_to_dataclass(raw_config.get("trading", {}), TradingConfig),
@@ -190,9 +213,10 @@ def load_config(config_path: Optional[Path] = None) -> FenixConfig:
         monitoring=_dict_to_dataclass(raw_config.get("monitoring", {}), MonitoringConfig),
         logging=_dict_to_dataclass(raw_config.get("logging", {}), LoggingConfig),
         resilience=_dict_to_dataclass(raw_config.get("resilience", {}), ResilienceConfig),
+        api=_dict_to_dataclass(raw_config.get("api", {}), APIConfig),
         secrets=SecretsConfig(),  # Always from environment
     )
-    
+
     logger.info(f"Loaded configuration from {config_path}")
     return config
 
@@ -204,18 +228,18 @@ _config_instance: Optional[FenixConfig] = None
 def get_config(force_reload: bool = False) -> FenixConfig:
     """
     Get the singleton configuration instance.
-    
+
     Args:
         force_reload: If True, reload configuration from files
-        
+
     Returns:
         FenixConfig singleton
     """
     global _config_instance
-    
+
     if _config_instance is None or force_reload:
         _config_instance = load_config()
-    
+
     return _config_instance
 
 

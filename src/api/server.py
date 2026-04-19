@@ -19,7 +19,22 @@ from pydantic import BaseModel, Field
 
 from src.config.logging_config import configure_root_logger, LOG_LEVELS
 
-_log_level = os.getenv("LOG_LEVEL", "").upper()
+_UNIFIED_CONFIG_AVAILABLE = True
+try:
+    from src.config.unified_loader import get_config
+except ImportError:
+    _UNIFIED_CONFIG_AVAILABLE = False
+    get_config = None
+
+if _UNIFIED_CONFIG_AVAILABLE:
+    try:
+        _config = get_config()
+        _log_level = _config.logging.level.upper() if _config else "INFO"
+    except Exception:
+        _log_level = os.getenv("LOG_LEVEL", "").upper()
+else:
+    _log_level = os.getenv("LOG_LEVEL", "").upper()
+
 _resolved_level = LOG_LEVELS.get(_log_level, logging.INFO)
 
 configure_root_logger(level=_resolved_level)
@@ -35,7 +50,6 @@ logger = logging.getLogger("Fenix")
 
 from src.trading.engine import TradingEngine
 from src.trading.binance_client import BinanceClient
-from src.config.config_loader import APP_CONFIG
 from src.config.database import init_db, get_db
 from src.memory.reasoning_bank import get_reasoning_bank
 from src.models.db_models import Order, Trade, Position, AgentOutput
@@ -261,12 +275,32 @@ async def lifespan(app: FastAPI):
     await init_db()
 
     logger.info("Initializing Trading Engine...")
-    engine = TradingEngine(
-        symbol="BTCUSDT",
-        timeframe="15m",
-        paper_trading=True,
-        allow_live_trading=False,
-    )
+    if _UNIFIED_CONFIG_AVAILABLE:
+        try:
+            config = get_config()
+            engine = TradingEngine(
+                symbol=config.trading.symbol,
+                timeframe=config.trading.timeframe,
+                paper_trading=True,
+                allow_live_trading=False,
+                enable_visual_agent=config.agents.enable_visual,
+                enable_sentiment_agent=config.agents.enable_sentiment,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to load unified config: {e}, using defaults")
+            engine = TradingEngine(
+                symbol="BTCUSDT",
+                timeframe="15m",
+                paper_trading=True,
+                allow_live_trading=False,
+            )
+    else:
+        engine = TradingEngine(
+            symbol="BTCUSDT",
+            timeframe="15m",
+            paper_trading=True,
+            allow_live_trading=False,
+        )
     engine.on_agent_event = handle_engine_event
 
     # Start engine in background task
@@ -286,10 +320,23 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(broadcast_metrics())
 
     # Initialize Default Admin and Demo Users if not exists
-    create_demo_users = (
-        os.getenv("CREATE_DEMO_USERS", "false").lower() == "true"
-        or os.getenv("ENVIRONMENT", "").lower() == "development"
-    )
+    if _UNIFIED_CONFIG_AVAILABLE:
+        try:
+            config = get_config()
+            create_demo_users = (
+                getattr(config.api, "create_demo_users", False)
+                or os.getenv("ENVIRONMENT", "").lower() == "development"
+            )
+        except Exception:
+            create_demo_users = (
+                os.getenv("CREATE_DEMO_USERS", "false").lower() == "true"
+                or os.getenv("ENVIRONMENT", "").lower() == "development"
+            )
+    else:
+        create_demo_users = (
+            os.getenv("CREATE_DEMO_USERS", "false").lower() == "true"
+            or os.getenv("ENVIRONMENT", "").lower() == "development"
+        )
     async for session in get_db():
         try:
             # Create the original admin used during development
@@ -510,7 +557,9 @@ def build_system_metrics() -> dict:
         "process": {
             "uptime": uptime,
             "pid": os.getpid(),
-            "version": getattr(APP_CONFIG, "version", "unknown"),
+            "version": getattr(
+                get_config() if _UNIFIED_CONFIG_AVAILABLE else None, "version", "1.0.0"
+            ),
             "python_version": platform.python_version(),
         },
     }
@@ -724,9 +773,21 @@ async def _restart_engine_with_config(
             _engine_task.cancel()
             await _engine_task
 
+    if _UNIFIED_CONFIG_AVAILABLE:
+        try:
+            config = get_config()
+            default_symbol = config.trading.symbol
+            default_timeframe = config.trading.timeframe
+        except Exception:
+            default_symbol = "BTCUSDT"
+            default_timeframe = "15m"
+    else:
+        default_symbol = "BTCUSDT"
+        default_timeframe = "15m"
+
     engine = TradingEngine(
-        symbol=current_symbol,
-        timeframe=current_timeframe,
+        symbol=current_symbol or default_symbol,
+        timeframe=current_timeframe or default_timeframe,
         paper_trading=current_paper,
         allow_live_trading=current_live,
         enable_visual_agent=current_visual,

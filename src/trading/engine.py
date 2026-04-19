@@ -56,6 +56,13 @@ except ImportError:
     FenixTradingGraph = None
 
 # Configuration
+_UNIFIED_CONFIG_AVAILABLE = True
+try:
+    from src.config.unified_loader import get_config
+except ImportError:
+    _UNIFIED_CONFIG_AVAILABLE = False
+    get_config = None
+
 try:
     from src.config.config_loader import APP_CONFIG
 except ImportError:
@@ -103,57 +110,122 @@ class TradingEngine:
 
     def __init__(
         self,
-        symbol: str = "BTCUSDT",
-        timeframe: str = "15m",
-        use_testnet: bool = False,
-        paper_trading: bool = True,
-        enable_visual_agent: bool = True,
-        enable_sentiment_agent: bool = True,
+        symbol: str | None = None,
+        timeframe: str | None = None,
+        use_testnet: bool | None = None,
+        paper_trading: bool | None = None,
+        enable_visual_agent: bool | None = None,
+        enable_sentiment_agent: bool | None = None,
         allow_live_trading: bool = False,
     ):
-        self.symbol = symbol.upper()
-        self.timeframe = timeframe
-        self.use_testnet = use_testnet
-        self.paper_trading = paper_trading
+        # Config unifiée
+        if _UNIFIED_CONFIG_AVAILABLE:
+            try:
+                config = get_config()
+                self.symbol = (symbol or config.trading.symbol).upper()
+                self.timeframe = timeframe or config.trading.timeframe
+                self._min_klines_to_start = config.trading.min_klines_to_start
+
+                # use_testnet: priorité args > config
+                self.use_testnet = (
+                    use_testnet if use_testnet is not None else config.binance.testnet
+                )
+
+                # paper_trading: priorité args > config
+                if paper_trading is not None:
+                    self.paper_trading = paper_trading
+                else:
+                    self.paper_trading = not allow_live_trading or self.use_testnet
+
+                # Agents
+                self.enable_visual = (
+                    enable_visual_agent
+                    if enable_visual_agent is not None
+                    else config.agents.enable_visual
+                )
+                self.enable_sentiment = (
+                    enable_sentiment_agent
+                    if enable_sentiment_agent is not None
+                    else config.agents.enable_sentiment
+                )
+                self.allow_live_trading = allow_live_trading
+                self._init_components()
+            except Exception as e:
+                logger.warning(f"Failed to load unified config: {e}, using defaults")
+                self._init_with_defaults(
+                    symbol,
+                    timeframe,
+                    use_testnet,
+                    paper_trading,
+                    enable_visual_agent,
+                    enable_sentiment_agent,
+                    allow_live_trading,
+                )
+                self._init_components()
+        else:
+            self._init_with_defaults(
+                symbol,
+                timeframe,
+                use_testnet,
+                paper_trading,
+                enable_visual_agent,
+                enable_sentiment_agent,
+                allow_live_trading,
+            )
+            self._init_components()
+
+    def _init_with_defaults(
+        self,
+        symbol: str | None,
+        timeframe: str | None,
+        use_testnet: bool | None,
+        paper_trading: bool | None,
+        enable_visual_agent: bool | None,
+        enable_sentiment_agent: bool | None,
+        allow_live_trading: bool,
+    ):
+        """Fallback initialization with defaults."""
+        self.symbol = (symbol or "BTCUSDT").upper()
+        self.timeframe = timeframe or "15m"
+        self.use_testnet = use_testnet if use_testnet is not None else False
+        self.paper_trading = paper_trading if paper_trading is not None else True
+        self.enable_visual = enable_visual_agent if enable_visual_agent is not None else True
+        self.enable_sentiment = (
+            enable_sentiment_agent if enable_sentiment_agent is not None else True
+        )
+        self._min_klines_to_start = int(os.getenv("FENIX_MIN_KLINES_TO_START", "20"))
         self.allow_live_trading = allow_live_trading
 
-        # Components
+    def _init_components(self) -> None:
+        """Initialize all trading engine components."""
         self.market_data = get_market_data_manager(
-            symbol=symbol,
-            timeframe=timeframe,
-            use_testnet=use_testnet,
+            symbol=self.symbol,
+            timeframe=self.timeframe,
+            use_testnet=self.use_testnet,
         )
-        self.executor = OrderExecutor(symbol=symbol, testnet=use_testnet)
+        self.executor = OrderExecutor(symbol=self.symbol, testnet=self.use_testnet)
         self.chart_generator = FenixChartGenerator()
-        self.pro_chart_generator = ProfessionalChartGenerator()  # New professional generator
+        self.pro_chart_generator = ProfessionalChartGenerator()
         self.news_scraper = EnhancedNewsScraper()
         self.twitter_scraper = TwitterScraper()
         self.reddit_scraper = RedditScraper()
         self.fear_greed_tool = FearGreedTool()
         self.reasoning_bank = get_reasoning_bank()
-        # Callback for frontend events - type hint for async callable
         self.on_agent_event: Callable[[str, dict[str, Any]], Awaitable[None]] | None = None
 
-        # Signal log path for persistence
         project_root = Path(__file__).parent.parent.parent
         self.signal_log_path = (
-            project_root / "logs" / "signals" / f"{symbol}_{timeframe}_signals.jsonl"
+            project_root / "logs" / "signals" / f"{self.symbol}_{self.timeframe}_signals.jsonl"
         )
         self.signal_log_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # State
         self._running = False
         self._last_decision_time: datetime | None = None
         self._consecutive_holds = 0
         self._kline_count = 0
-        self._min_klines_to_start = int(os.getenv("FENIX_MIN_KLINES_TO_START", "20"))
 
-        # LangGraph
         self._trading_graph: FenixTradingGraph | None = None
-        self.enable_visual = enable_visual_agent
-        self.enable_sentiment = enable_sentiment_agent
 
-        # Initialize RiskManager
         self.risk_manager = get_risk_manager() if RISK_MANAGER_AVAILABLE else None
         if self.risk_manager:
             logger.info("✅ RuntimeRiskManager initialized")
@@ -161,8 +233,8 @@ class TradingEngine:
             logger.warning("⚠️ RuntimeRiskManager not available")
 
         logger.info(
-            f"TradingEngine initialized: {symbol}@{timeframe} "
-            f"(paper={paper_trading}, testnet={use_testnet})"
+            f"TradingEngine initialized: {self.symbol}@{self.timeframe} "
+            f"(paper={self.paper_trading}, testnet={self.use_testnet})"
         )
 
     async def initialize(self) -> bool:
@@ -694,13 +766,16 @@ class TradingEngine:
         logger.info(f"Account balance (USDT): {balance:.2f}")
 
         # Calculate quantity based on risk
-        position_size = (
-            adjusted_size
-            if "adjusted_size" in locals()
-            else (
-                balance * (APP_CONFIG.risk_management.base_risk_per_trade if APP_CONFIG else 0.01)
-            )
-        )
+        if _UNIFIED_CONFIG_AVAILABLE and get_config is not None:
+            try:
+                config = get_config()
+                risk_pct = config.trading.max_risk_per_trade / 100.0
+            except Exception:
+                risk_pct = 0.02
+        else:
+            risk_pct = 0.02
+
+        position_size = adjusted_size if "adjusted_size" in locals() else balance * risk_pct
 
         quantity = position_size / entry_price
 

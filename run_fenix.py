@@ -216,12 +216,12 @@ async def main():
         from src.trading.engine import TradingEngine
 
         engine = TradingEngine(
-            symbol=args.symbol,
-            timeframe=args.timeframe,
-            use_testnet=args.mode == "paper" or args.testnet,
-            paper_trading=args.mode == "paper" or args.dry_run,
-            enable_visual_agent=not args.no_visual,
-            enable_sentiment_agent=not args.no_sentiment,
+            symbol=args.symbol if args.symbol != "BTCUSDT" else None,
+            timeframe=args.timeframe if args.timeframe != "15m" else None,
+            use_testnet=args.testnet if args.testnet else None,
+            paper_trading=(args.mode == "paper" or args.dry_run) if args.mode else None,
+            enable_visual_agent=not args.no_visual if args.no_visual is not None else None,
+            enable_sentiment_agent=not args.no_sentiment if args.no_sentiment is not None else None,
             allow_live_trading=args.allow_live,
         )
 
