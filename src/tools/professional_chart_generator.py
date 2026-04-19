@@ -49,6 +49,12 @@ try:
 
     PLOTLY_AVAILABLE = True
 
+    # Workaround for kaleido 1.2.0 bug: debug2 method missing on Logger
+    import logging
+
+    if not hasattr(logging.Logger, "debug2"):
+        logging.Logger.debug2 = lambda self, msg, *args, **kwargs: self.debug(msg, *args, **kwargs)
+
     # Configure Kaleido for Chrome/Chromium export
     try:
         import plotly.io as pio
