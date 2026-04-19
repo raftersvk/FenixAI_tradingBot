@@ -117,13 +117,55 @@ _POSITIONS: List[dict] = []
 _TRADE_HISTORY: List[dict] = []
 _AGENT_OUTPUTS: List[dict] = []
 
-# Logger
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-logger = logging.getLogger("FenixAPI")
+# Override uvicorn logging config to include timestamps in logs
+try:
+    import uvicorn
+
+    uvicorn.config.LOGGING_CONFIG = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "default": {
+                "()": "uvicorn.logging.DefaultFormatter",
+                "fmt": "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+                "datefmt": "%Y-%m-%d %H:%M:%S",
+            },
+            "access": {
+                "()": "uvicorn.logging.AccessFormatter",
+                "fmt": "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+                "datefmt": "%Y-%m-%d %H:%M:%S",
+            },
+        },
+        "handlers": {
+            "default": {
+                "formatter": "default",
+                "class": "logging.StreamHandler",
+                "stream": "ext://sys.stderr",
+            },
+            "access": {
+                "formatter": "access",
+                "class": "logging.StreamHandler",
+                "stream": "ext://sys.stderr",
+            },
+        },
+        "loggers": {
+            "uvicorn": {"handlers": ["default"], "level": "INFO"},
+            "uvicorn.error": {"level": "INFO"},
+            "uvicorn.access": {"handlers": ["access"], "level": "INFO", "propagate": False},
+        },
+    }
+except ImportError:
+    pass
+
+# Configure logging if not already configured (when run via uvicorn directly)
+if not logging.getLogger().hasHandlers():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+logger = logging.getLogger("Fenix")
 
 # Global Engine Instance
 engine: TradingEngine | None = None
@@ -1401,7 +1443,7 @@ async def get_market_overview(symbols: Optional[str] = Query(None)):
 
 @sio.on("subscribe:agents")
 async def subscribe_agents(sid):
-    logger.info(f"Client {sid} subscribed to agents")
+    logger.debug(f"Client {sid} subscribed to agents")
 
 
 # ============ ReasoningBank Endpoints ============
@@ -1446,17 +1488,17 @@ async def search_reasoning(
 @sio.event
 async def connect(sid, environ):
     origin = environ.get("HTTP_ORIGIN", environ.get("Origin", "no-origin"))
-    logger.info(f"[SocketIO] Client connected: sid={sid}, origin={origin}")
+    logger.debug(f"[SocketIO] Client connected: sid={sid}, origin={origin}")
 
 
 @sio.event
 async def disconnect(sid):
-    logger.info(f"Socket disconnected: {sid}")
+    logger.debug(f"Socket disconnected: {sid}")
 
 
 @sio.on("subscribe:system")
 async def subscribe_system(sid):
-    logger.info(f"Client {sid} subscribed to system")
+    logger.debug(f"Client {sid} subscribed to system")
 
 
 # Wrap FastAPI with Socket.IO for WebSocket support

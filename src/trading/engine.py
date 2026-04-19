@@ -422,6 +422,14 @@ class TradingEngine:
                             "datetime": list(timestamp_buf),  # Unix timestamps in milliseconds
                         }
 
+                    # DEBUG: Log kline_data before chart generation
+                    logger.warning(
+                        "🖼️ DEBUG kline_data: keys=%s, len=%d, sample=%s",
+                        list(kline_data.keys()) if kline_data else None,
+                        len(kline_data.get("close", [])) if kline_data else 0,
+                        kline_data.get("close", [])[:2] if kline_data else [],
+                    )
+
                     # Try professional generator first (TradingView style)
                     try:
                         pro_result = self.pro_chart_generator.generate_chart(
@@ -434,6 +442,12 @@ class TradingEngine:
                             show_macd=True,
                         )
                         chart_b64 = pro_result.get("image_b64")
+                        # DEBUG: Log result
+                        logger.warning(
+                            "🖼️ DEBUG pro_result: image_b64=%s, error=%s",
+                            bool(chart_b64),
+                            pro_result.get("error"),
+                        )
                         if chart_b64:
                             logger.info("🖼️ Professional chart generated (%d chars)", len(chart_b64))
                     except Exception as pro_err:
@@ -449,6 +463,12 @@ class TradingEngine:
                             last_n_candles=50,
                         )
                         chart_b64 = chart_result.get("image_b64")
+                        # DEBUG: Log fallback result
+                        logger.warning(
+                            "🖼️ DEBUG fallback_result: image_b64=%s, error=%s",
+                            bool(chart_b64),
+                            chart_result.get("error"),
+                        )
                         if chart_b64:
                             logger.info("🖼️ Fallback chart generated (%d chars)", len(chart_b64))
 
