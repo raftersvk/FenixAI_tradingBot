@@ -74,25 +74,17 @@ class MicrostructureMetrics:
 
 
 class MarketDataManager:
-    """
-    Manages real-time market data.
-
-    Responsibilities:
-    - WebSocket connections to Binance
-    - Klines processing
-    - Microstructure metrics calculation
-    - Trades buffer for CVD
-    """
-
     def __init__(
         self,
         symbol: str = "BTCUSDT",
         timeframe: str = "15m",
         use_testnet: bool = False,
-    ):
-        self.symbol = symbol.upper()
+        min_klines: int = 500,
+    ) -> None:
+        self.symbol = symbol
         self.timeframe = timeframe
         self.use_testnet = use_testnet
+        self.min_klines = min_klines
 
         # WebSocket URLs
         base_url = "stream.binancefuture" if use_testnet else "fstream.binance"
@@ -146,8 +138,9 @@ class MarketDataManager:
 
         logger.info("All WebSocket connections started")
 
-    async def _prefill_klines(self, limit: int = 200) -> None:
+    async def _prefill_klines(self) -> None:
         """Loads historical klines at startup to fill buffers and charts."""
+        limit = max(self.min_klines, 200)
         try:
             client = BinanceClient(testnet=self.use_testnet)
             if not await client.connect():
@@ -395,6 +388,7 @@ def get_market_data_manager(
     symbol: str = "BTCUSDT",
     timeframe: str = "15m",
     use_testnet: bool = False,
+    min_klines: int = 500,
     force_new: bool = False,
 ) -> MarketDataManager:
     """Singleton factory para MarketDataManager."""
@@ -405,6 +399,7 @@ def get_market_data_manager(
             symbol=symbol,
             timeframe=timeframe,
             use_testnet=use_testnet,
+            min_klines=min_klines,
         )
 
     return _market_data_instance

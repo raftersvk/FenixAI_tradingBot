@@ -202,6 +202,7 @@ class TradingEngine:
             symbol=self.symbol,
             timeframe=self.timeframe,
             use_testnet=self.use_testnet,
+            min_klines=self._min_klines_to_start,
         )
         self.executor = OrderExecutor(symbol=self.symbol, testnet=self.use_testnet)
         self.chart_generator = FenixChartGenerator()
