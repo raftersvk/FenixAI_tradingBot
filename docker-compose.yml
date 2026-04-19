@@ -36,6 +36,7 @@ services:
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
+      - ./cache:/app/cache
       - ./config:/app/config:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/system/health"]
