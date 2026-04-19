@@ -22,7 +22,7 @@ from datetime import datetime
 from pathlib import Path
 
 # Centralized logging utilities
-from src.config.logging_config import build_logging_config, setup_logging, get_logger
+from src.config.logging_config import build_logging_config, setup_logging, get_logger, LOG_LEVELS
 
 # Create logs directory
 Path("logs").mkdir(exist_ok=True)
@@ -346,12 +346,12 @@ if __name__ == "__main__":
                 host = "127.0.0.1"
 
         # Build unified logging configuration (includes uvicorn, websocket debug)
+        _log_level = os.getenv("LOG_LEVEL", "").upper()
+        _resolved_level = LOG_LEVELS.get(_log_level, logging.INFO)
         log_config = build_logging_config(
-            level=logging.INFO,
+            level=_resolved_level,
             log_file=log_file,
-            websocket_debug=True,
             include_uvicorn=True,
-            trace_libs=True,
         )
         uvicorn.run(
             "src.api.server:app",
@@ -363,7 +363,12 @@ if __name__ == "__main__":
         sys.exit(0)
 
     # CLI mode (non-API): configure logging locally
-    setup_logging(level=logging.INFO, log_file=log_file, websocket_debug=True, trace_libs=True)
+    _log_level = os.getenv("LOG_LEVEL", "").upper()
+    _resolved_level = LOG_LEVELS.get(_log_level, logging.INFO)
+    setup_logging(
+        level=_resolved_level,
+        log_file=log_file,
+    )
     logger = get_logger("Fenix")
 
     try:

@@ -17,9 +17,12 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from src.config.logging_config import configure_root_logger
+from src.config.logging_config import configure_root_logger, LOG_LEVELS
 
-configure_root_logger(level=logging.INFO, websocket_debug=True, trace_libs=True)
+_log_level = os.getenv("LOG_LEVEL", "").upper()
+_resolved_level = LOG_LEVELS.get(_log_level, logging.INFO)
+
+configure_root_logger(level=_resolved_level)
 
 try:
     import uvicorn.config
