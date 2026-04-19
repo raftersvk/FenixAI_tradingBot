@@ -171,17 +171,43 @@ async def handle_engine_event(event_type: str, data: dict):
     """Handle events emitted by the trading engine."""
     try:
         if event_type == "agent_output":
+            agent_data = data.get("data", {})
+            agent_name = data.get("agent_name", "")
+
+            # Extract reasoning with fallbacks for different agent types
+            reasoning = (
+                agent_data.get("reasoning")
+                or agent_data.get("combined_reasoning")
+                or agent_data.get("visual_analysis")
+                or agent_data.get("sentiment_breakdown", {}).get("summary")
+                or agent_data.get("overall_sentiment", "NEUTRAL")
+                or "No reasoning"
+            )
+
+            # Extract decision with fallbacks
+            decision = (
+                agent_data.get("signal")
+                or agent_data.get("action")
+                or agent_data.get("final_decision")
+                or agent_data.get("overall_sentiment", "HOLD")
+            )
+
+            # Extract confidence with fallbacks for different agent types
+            confidence = (
+                agent_data.get("confidence")
+                or agent_data.get("confidence_score")
+                or agent_data.get("qabba_confidence")
+                or agent_data.get("convergence_score")
+                or 0.5  # Default to 0.5 if not found
+            )
+
             payload = {
                 "id": str(uuid.uuid4()),
-                "agent_name": data.get("agent_name"),
+                "agent_name": agent_name,
                 "timestamp": data.get("timestamp"),
-                "reasoning": data.get("data", {}).get("reasoning", "")
-                or data.get("data", {}).get("visual_analysis", "")
-                or "No reasoning",
-                "decision": data.get("data", {}).get("signal")
-                or data.get("data", {}).get("action")
-                or "HOLD",
-                "confidence": data.get("data", {}).get("confidence", 0.0),
+                "reasoning": reasoning,
+                "decision": decision,
+                "confidence": confidence,
                 "input_summary": "Live Analysis",
             }
             # Include social and Fear&Greed data for sentiment agent
