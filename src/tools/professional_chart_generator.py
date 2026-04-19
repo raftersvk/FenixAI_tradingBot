@@ -53,19 +53,29 @@ try:
     try:
         import plotly.io as pio
         import os
+        import warnings
+
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
 
         # Set Chromium path for standard installations
         chromium_path = os.environ.get("CHROMIUM_PATH", "/usr/bin/chromium")
         if os.path.exists(chromium_path):
-            pio.kaleido.scope.executable = chromium_path
+            try:
+                pio.defaults.executable = chromium_path
+            except AttributeError:
+                pio.kaleido.scope.executable = chromium_path
 
         # Configure Chromium flags for Docker/non-interactive environments
-        pio.kaleido.scope.chromium_args = [
+        chromium_args = [
             "--no-sandbox",
             "--disable-gpu",
             "--disable-dev-shm-usage",
             "--headless=new",
         ]
+        try:
+            pio.defaults.chromium_args = chromium_args
+        except AttributeError:
+            pio.kaleido.scope.chromium_args = chromium_args
     except Exception as e:
         logger.debug(f"Kaleido config: {e}")
 except ImportError:
