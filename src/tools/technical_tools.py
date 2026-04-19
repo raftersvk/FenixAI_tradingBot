@@ -553,12 +553,15 @@ def _calculate_and_store_all_indicators() -> None:
                 returns = returns * 10
             am = arch_model(returns, vol="GARCH", p=1, q=1, dist="normal", rescale=False)
             with warnings.catch_warnings():
-                warnings.filterwarnings(
-                    "ignore", message=".*optimizer.*", category=ConvergenceWarning
-                )
-                warnings.filterwarnings(
-                    "ignore", message=".*positive directional.*", category=ConvergenceWarning
-                )
+                if ArchConvergenceWarning is not None:
+                    warnings.filterwarnings(
+                        "ignore", message=".*optimizer.*", category=ArchConvergenceWarning
+                    )
+                    warnings.filterwarnings(
+                        "ignore",
+                        message=".*positive directional.*",
+                        category=ArchConvergenceWarning,
+                    )
                 res = am.fit(disp="off", options={"maxiter": 100, "ftol": 1e-6})
             if res.convergence_flag != 0:
                 logger.debug("GARCH model did not converge, skipping volatility forecast")
