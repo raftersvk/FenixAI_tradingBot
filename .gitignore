@@ -28,7 +28,7 @@ MANIFEST
 .mypy_cache/
 .dmypy.json
 dmypy.json
-config/
+.config/
 
 # Virtual Environments
 .venv/
